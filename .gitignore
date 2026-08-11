@@ -15,6 +15,15 @@ __pycache__/
 
 # Reasonix 本地配置（不共享个人环境）
 .reasonix/
+.zcode/
+
+# Reasonix 在 game-prototypes 内误建的嵌套仓库（已停用，保留备份）
+.git.reasonix-bak/
+
+# Node 依赖（three-player-controller 方案已废弃，不提交）
+node_modules/
+game-prototypes/package.json
+game-prototypes/package-lock.json
 
 # 临时测试截图
 shot_*.png

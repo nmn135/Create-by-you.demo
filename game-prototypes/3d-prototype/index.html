@@ -190,6 +190,24 @@
     }
 
     /* ========== 加载指示器 ========== */
+    #opening-overlay {
+      position: fixed; inset: 0; z-index: 9000; background: #05070c;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 1; transition: opacity 1.2s ease;
+    }
+    #opening-overlay.done { opacity: 0; pointer-events: none; }
+    #opening-inner { max-width: 720px; padding: 40px; text-align: center; }
+    #opening-title { font-size: 42px; letter-spacing: 14px; color: #cfe8f0; margin-bottom: 42px;
+      text-shadow: 0 0 30px rgba(92,200,216,0.5); }
+    #opening-text { font-size: 17px; line-height: 2.0; color: #b8c8d0; min-height: 160px; white-space: pre-wrap; }
+    #opening-cursor { display: inline-block; width: 10px; height: 20px; background: #5cc8d8;
+      vertical-align: -3px; animation: opCursor 0.8s steps(1) infinite; }
+    @keyframes opCursor { 0%,49% {opacity:1} 50%,100% {opacity:0} }
+    #opening-continue { margin-top: 30px; font-size: 13px; color: #6a8a96; letter-spacing: 4px; }
+    #opening-enter { margin-top: 30px; padding: 10px 34px; font-size: 16px; letter-spacing: 4px;
+      background: rgba(92,200,216,0.12); color: #a8e0ea; border: 1px solid rgba(92,200,216,0.5);
+      border-radius: 6px; cursor: pointer; }
+    #opening-enter:hover { background: rgba(92,200,216,0.25); }
     #loading {
       position: fixed;
       inset: 0;
@@ -895,15 +913,8 @@
   <!-- 加载遮罩 -->
   <div id="loading"><div class="pulse"></div></div>
 
-  <!-- 画布容器 -->
+  <!-- 3D 画布容器（渲染器挂载点） -->
   <div id="canvas-container"></div>
-
-  <!-- 信息覆盖层 -->
-  <div id="info-overlay">
-    <div class="title-zh">封印之殿</div>
-    <div class="title-en">Sealed Hall</div>
-    <div class="divider"></div>
-  </div>
 
   <!-- NPC 标签 -->
   <div id="labels-container">
@@ -946,7 +957,6 @@
   <div id="whisper-prompt">请点击一位 NPC 选择悄悄话目标</div>
 
   <!-- 新增：对话输入区域 -->
-  <div id="model-status"></div>
   <div id="chat-input-area">
     <button class="chat-mode-btn active" id="btn-public" title="公开对话">🌐 公开</button>
     <button class="chat-mode-btn" id="btn-whisper" title="悄悄话">🔇 悄悄话</button>
@@ -1014,6 +1024,7 @@
     import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { ModelManager } from './src/models.js';
+import { AmbientAudio } from './src/audio.js';
     import { Guidance } from './src/guidance.js';
     import { SceneMarkers } from './src/markers.js';
     import { initDraggableUI } from './src/ui_drag.js';
@@ -1021,6 +1032,10 @@
     import { Atmosphere } from './src/atmosphere.js';
     import { Settings } from './src/settings.js';
     import { Props } from './src/props.js';
+    import { PerfMonitor } from './src/perf.js';
+
+    // NPC 入场阶段表（必须在任何模型加载回调前初始化，避免 TDZ）
+    const NPC_ENTRANCE_STAGE = { rog: 1, baruk: 2, liana: 3, margaret: 4 };
 
     // 引导系统实例（自包含 DOM；供全局各流程调用）
     const guidance = new Guidance();
@@ -1046,9 +1061,21 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.45;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
+
+    // 性能监控（FPS 统计 / HUD / 基线记录 / 自动降级信号）
+    // 自动降级回调 5s 后才触发，届时 settings/applyQuality 均已就绪
+    const perf = new PerfMonitor({
+      renderer,
+      onAutoDowngrade: () => {
+        if (typeof settings === 'undefined' || !settings || settings.get('quality') === 'low') return;
+        const next = settings.get('quality') === 'high' ? 'medium' : 'low';
+        settings.setQuality(next);
+        showHints(['检测到运行帧率偏低，已自动切换为「' + (next === 'medium' ? '中' : '低') + '」画质（可在 ⚙ 设置中改回）']);
+      },
+    });
 
     // 场景
     const scene = new THREE.Scene();
@@ -1310,18 +1337,6 @@
         console.log('[纹理] 内墙装饰板 → 写实石墙');
       }
 
-      // 2) 北墙（入口侧）：砖墙强调入口区域
-      if (wallBrick) {
-        wallBrick.repeat.set(2.5, 1.2);
-        const northWall = walls[0];
-        if (northWall) {
-          if (northWall.material.map) northWall.material.map.dispose();
-          northWall.material.map = wallBrick;
-          northWall.material.color = new THREE.Color(0x9a7a5a);
-          northWall.material.needsUpdate = true;
-          console.log('[纹理] 北墙 → 砖墙 brick_wall_02（入口）');
-        }
-      }
 
       // 3) 地板：木地板（酒馆核心氛围）
       if (floorWood) {
@@ -1395,11 +1410,11 @@
     // ============================================================
 
     // 4a. 环境光 —— 提供最基础照明
-    const ambientLight = new THREE.AmbientLight(0x3a3530, 0.5);
+    const ambientLight = new THREE.AmbientLight(0x4a4038, 1.25);
     scene.add(ambientLight);
 
     // 4b. 半球光 —— 模拟天空/地面漫反射
-    const hemiLight = new THREE.HemisphereLight(0xb8a890, 0x2a2520, 0.3);
+    const hemiLight = new THREE.HemisphereLight(0xc8b8a0, 0x3a3530, 0.75);
     scene.add(hemiLight);
 
     // 4c. 主方向光 —— 模拟殿顶天窗
@@ -1419,7 +1434,7 @@
     scene.add(sunLight);
 
     // 4d. 守护灵点光源（颜色随后续道德评分动态变化）
-    const guardianPointLight = new THREE.PointLight(0x5cc8d8, 15, 10, 0.6);
+    const guardianPointLight = new THREE.PointLight(0x5cc8d8, 8, 6, 2);
     guardianPointLight.position.set(0, 3.2, 0);
     guardianPointLight.castShadow = true;
     guardianPointLight.shadow.mapSize.width = 512;
@@ -1625,6 +1640,10 @@
     };
 
     const npcMeshes = {};
+      const npcWanderState = {};
+
+    const STAGE_ENTRANCE_NPC = { 1: 'rog', 2: 'baruk', 3: 'liana', 4: 'margaret' };
+    const ENTRANCE_POS = { x: 0, z: -8.5 };
 
     // === Mixamo 模型管理器（可选加载；缺失时回退几何人形） ===
     const MODEL_CONFIG = {
@@ -1803,6 +1822,7 @@
         const group = createHumanoidGroup(cfg);
         scene.add(group);
         npcMeshes[key] = { group, cfg, modelLoaded: false };
+        group.visible = false; // ?????????????????
       });
 
       // Baruk 面朝西墙（矮人专注看墙上的矿工暗语）
@@ -1813,7 +1833,11 @@
       // 异步加载 Mixamo 模型：存在则替换几何人形，缺失保持现状
       Object.keys(npcPositions).forEach((key) => {
         modelManager.loadNPC(key, npcPositions[key]).then((model) => {
-          if (!model) return;
+          if (!model) {
+            const es = NPC_ENTRANCE_STAGE[key] || 99;
+            if (npcMeshes[key]) npcMeshes[key].group.visible = currentPhase >= es;
+            return;
+          }
           replaceNpcWithModel(key, model);
         });
       });
@@ -1845,6 +1869,10 @@
       // 注册表换用模型（后续 lerp / 标签 / 情绪 / 信任度都走模型）
       entry.group = model;
       entry.modelLoaded = true;
+
+      // ???????????? >= ???????
+      const enterStage = NPC_ENTRANCE_STAGE[npcKey] || 99;
+      entry.group.visible = currentPhase >= enterStage;
 
       // 同步当前信任度表现
       modelManager.setTrust(npcKey, npcTrust[npcKey] !== undefined ? npcTrust[npcKey] : 0.5);
@@ -2027,11 +2055,11 @@
         head.position.y = 1.85;
         torch.add(head);
         // 火焰光球
-        const flame = new T.Mesh(new T.SphereGeometry(0.1, 8, 8), fireMat);
+        const flame = new T.Mesh(new T.SphereGeometry(0.3, 8, 8), fireMat);
         flame.position.y = 2.0;
         torch.add(flame);
         // 光晕
-        const glow = new T.Mesh(new T.SphereGeometry(0.45, 12, 10), glowMat);
+        const glow = new T.Mesh(new T.SphereGeometry(1.0, 12, 10), glowMat);
         glow.position.y = 2.0;
         torch.add(glow);
         // 点光源
@@ -2064,7 +2092,19 @@
       chandelier.add(chain);
       chandelier.position.set(0, HALL.height - 0.5, 0);
       scene.add(chandelier);
+      // Chandelier warm point light
+      const chandelierLight = new T.PointLight(0xffcc88, 4, 6, 2);
+      chandelierLight.position.copy(chandelier.position);
+      scene.add(chandelierLight);
+      chandelier.userData.light = chandelierLight;
       props.push(chandelier);
+      // Corner wall sconces (4 warm lights)
+      [[-9.5, -7], [9.5, -7], [-9.5, 7], [9.5, 7]].forEach(([cx, cz]) => {
+        const wl = new T.PointLight(0xffaa66, 2, 4, 2);
+        wl.position.set(cx, 2.0, cz);
+        scene.add(wl);
+        props.push(wl);
+      });
       chandelier.userData.candles = chandelier.children.filter(c => c.material === fireMat);
 
       // 书架（精灵区，东墙）
@@ -2752,6 +2792,18 @@
         }
         guidance.setStage(currentPhase);
 
+        // === ??????????? NPC ???????? ===
+        const enterNpc = STAGE_ENTRANCE_NPC[currentPhase];
+        if (enterNpc && npcMeshes[enterNpc]) {
+          const e2 = npcMeshes[enterNpc];
+          e2.group.visible = true;
+          e2.group.position.set(ENTRANCE_POS.x, 0, ENTRANCE_POS.z);
+          npcWanderState[enterNpc] = npcWanderState[enterNpc] || {};
+          npcWanderState[enterNpc].target = new THREE.Vector3(npcPositions[enterNpc].x, 0, npcPositions[enterNpc].z);
+          npcWanderState[enterNpc].entering = true;
+          npcWanderState[enterNpc].timer = 999;
+        }
+
         if (data.npc_name && data.entrance_line) {
           // 新 NPC 入场演出
           addChatMessage({ type: 'system', text: '—— 门被推开了 ——' });
@@ -3217,6 +3269,12 @@
             currentPhase = data.game.current_stage;
             updatePhaseButton();
             guidance.setStage(currentPhase);
+            // ?? NPC ???????????????? NPC ????????
+            for (const nk of Object.keys(NPC_ENTRANCE_STAGE)) {
+              if (npcMeshes[nk] && npcMeshes[nk].group) {
+                npcMeshes[nk].group.visible = currentPhase >= NPC_ENTRANCE_STAGE[nk];
+              }
+            }
           }
         }
       } catch (e) {
@@ -3274,8 +3332,7 @@
     };
 
     /** 找玩家附近最近的 NPC（第一/第三人称交互用） */
-    /** 各 NPC 入场所需阶段（与 ENTRANCE_ORDER 一致） */
-    const NPC_ENTRANCE_STAGE = { rog: 1, baruk: 2, liana: 3, margaret: 4 };
+    /** 各 NPC 入场所需阶段已上移至模块顶部（避免 TDZ） */
 
     function findNearbyNpc(range) {
       if (!fpsController || fpsController.mode === 'overview') return null;
@@ -3373,12 +3430,74 @@
       }
     }
 
+    // ============================================================
+    // 10.5 画质档位（高/中/低，动态生效不重建场景）
+    // ============================================================
+    //  高：阴影 2048+512 / pixelRatio≤2 / 粒子全开 / 火把 4 灯
+    //  中：阴影 1024+256 / pixelRatio≤1.5 / 光环粒子关 / 火把 2 灯
+    //  低：阴影全关 / pixelRatio=1 / 粒子全关 / 火把 1 灯
+    // 由 Settings onApply 与自动降级调用；perf.setQuality 同步 HUD 标签。
+    function applyQuality(level) {
+      const L = level === 'medium' ? 'medium' : level === 'low' ? 'low' : 'high';
+
+      // --- 阴影 ---
+      if (L === 'low') {
+        renderer.shadowMap.enabled = false;
+        sunLight.castShadow = false;
+        guardianPointLight.castShadow = false;
+      } else {
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        sunLight.castShadow = true;
+        guardianPointLight.castShadow = true;
+        const sunSize = L === 'high' ? 2048 : 1024;
+        if (sunLight.shadow.mapSize.width !== sunSize) {
+          sunLight.shadow.mapSize.set(sunSize, sunSize);
+          sunLight.shadow.map && sunLight.shadow.map.dispose();
+          sunLight.shadow.map = null; // 下一帧自动重建
+        }
+        const ptSize = L === 'high' ? 512 : 256;
+        if (guardianPointLight.shadow.mapSize.width !== ptSize) {
+          guardianPointLight.shadow.mapSize.set(ptSize, ptSize);
+          guardianPointLight.shadow.map && guardianPointLight.shadow.map.dispose();
+          guardianPointLight.shadow.map = null;
+        }
+      }
+
+      // --- 像素比（antialias 无法动态关，靠此降载） ---
+      const pr = L === 'high' ? Math.min(window.devicePixelRatio, 2)
+        : L === 'medium' ? Math.min(window.devicePixelRatio, 1.5) : 1;
+      renderer.setPixelRatio(pr);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      // --- 粒子（光环 42 + 光束 200） ---
+      if (typeof guardianRing !== 'undefined') guardianRing.visible = (L === 'high');
+      if (typeof beamParticles !== 'undefined') beamParticles.visible = (L !== 'low');
+
+      // --- 火把点光源（4 → 2 → 1） ---
+      if (typeof tavernProps !== 'undefined') {
+        const keep = L === 'high' ? 4 : L === 'medium' ? 2 : 1;
+        let torchIdx = 0;
+        tavernProps.forEach((p) => {
+          const l = p.userData && p.userData.light;
+          if (!l) return;
+          l.visible = torchIdx < keep;
+          torchIdx++;
+        });
+      }
+
+      if (typeof perf !== 'undefined') perf.setQuality(L);
+    }
+
     function animate() {
       requestAnimationFrame(animate);
 
       const elapsed = clock.getElapsedTime();
       const dt = Math.min(elapsed - (animate._prevElapsed || elapsed), 0.1);
       animate._prevElapsed = elapsed;
+
+      // --- 性能监控采样 ---
+      perf.tick(dt);
 
       // --- 酒馆火把/吊灯火焰动画 ---
       if (typeof tavernProps !== 'undefined') {
@@ -3557,6 +3676,15 @@
       labelWorldPositions.rog.set(npcMeshes.rog.group.position.x, 1.6, npcMeshes.rog.group.position.z);
       labelWorldPositions.margaret.set(npcMeshes.margaret.group.position.x, 1.6, npcMeshes.margaret.group.position.z);
 
+      // ????????? NPC ?????
+      for (const nk of Object.keys(NPC_ENTRANCE_STAGE)) {
+        const lbl = document.querySelector('.npc-label.' + nk);
+        if (lbl) {
+          const vis = npcMeshes[nk] && npcMeshes[nk].group && npcMeshes[nk].group.visible;
+          lbl.style.display = vis ? '' : 'none';
+        }
+      }
+
       // --- 屏幕色温渐变 ---
       // 当没有按键持续推动时，缓慢回中
       colorTempCurrent += (colorTempTarget - colorTempCurrent) * Math.min(2.5 * dt, 1);
@@ -3574,7 +3702,79 @@
       }
 
       // --- Mixamo 模型动画更新 ---
+      // === NPC 朝向玩家（fps/tps 模式，平滑转向；入场/走动时不覆盖）===
+      const _fc = window.__fpsController;
+      if (_fc && _fc.mode !== 'overview' && _fc.pos) {
+        for (const k of Object.keys(npcMeshes)) {
+          const e = npcMeshes[k];
+          if (!e || !e.modelLoaded || !e.group.visible) continue;
+          const ws = npcWanderState[k];
+          if (ws && (ws.entering || ws.walking)) continue; // 入场/走动时保持移动朝向
+          const dx = _fc.pos.x - e.group.position.x;
+          const dz = _fc.pos.z - e.group.position.z;
+          if (dx * dx + dz * dz < 0.01) continue;
+          const targetY = Math.atan2(dx, dz);
+          let diff = targetY - e.group.rotation.y;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          e.group.rotation.y += diff * Math.min(4 * dt, 1);
+        }
+      }
+
       modelManager.update(dt);
+      // NPC subtle wandering (lerp within home area)
+      for (const k of Object.keys(npcMeshes)) {
+        const e = npcMeshes[k];
+        if (!e || !e.modelLoaded) continue;
+        npcWanderState[k] = npcWanderState[k] || {};
+        // ??????????? moveTowards ???????
+        if (npcWanderState[k].entering) {
+          const walkSpeed = 1.2; // m/s (slower entrance, walk-in pace)
+          // ?????three 0.160 ? moveTowards?
+          const tgt = npcWanderState[k].target;
+          const dx = tgt.x - e.group.position.x;
+          const dz = tgt.z - e.group.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist > 0.001) {
+            const step = Math.min(dist, walkSpeed * dt);
+            e.group.position.x += (dx / dist) * step;
+            e.group.position.z += (dz / dist) * step;
+          }
+          // ????? walk ??????
+          if (!npcWanderState[k].walkStarted) {
+            npcWanderState[k].walkStarted = true;
+            if (modelManager && modelManager.models[k] && modelManager.models[k].clips.walk) {
+              modelManager.playAnimation(k, 'walk');
+            }
+          }
+          if (e.group.position.distanceTo(npcWanderState[k].target) < 0.3) {
+            npcWanderState[k].entering = false;
+            if (modelManager) modelManager.playAnimation(k, 'idle');
+            npcWanderState[k].timer = 3 + Math.random() * 6;
+          }
+          continue;
+        }
+        npcWanderState[k].timer = (npcWanderState[k].timer || 2) - dt;
+        if (npcWanderState[k].timer <= 0) {
+          npcWanderState[k].timer = 3 + Math.random() * 6;
+          const bp = npcPositions[k];
+          if (!npcWanderState[k].target) npcWanderState[k].target = new THREE.Vector3();
+          npcWanderState[k].target.set(bp.x + (Math.random() - 0.5) * 1.2, bp.y, bp.z + (Math.random() - 0.5) * 1.2);
+          // Play walk animation if available
+          if (modelManager && modelManager.models[k] && modelManager.models[k].clips.walk) {
+            modelManager.playAnimation(k, 'walk');
+            npcWanderState[k].walking = true;
+          }
+        }
+        if (npcWanderState[k].target) {
+          e.group.position.lerp(npcWanderState[k].target, dt * 0.4);
+          // Return to idle when close to target
+          if (npcWanderState[k].walking && e.group.position.distanceTo(npcWanderState[k].target) < 0.35) {
+            modelManager && modelManager.playAnimation(k, 'idle');
+            npcWanderState[k].walking = false;
+          }
+        }
+      }
 
       // --- 更新 OrbitControls（FPS/TPS 模式下由 FPSController 接管相机，跳过避免抖动） ---
       if (fpsController.mode === 'overview') {
@@ -3911,7 +4111,27 @@
     // ============================================================
     // 隐藏加载遮罩
     setTimeout(() => {
+      // Ambient audio - starts on first user interaction
+  const ambientAudio = new AmbientAudio();
+  window.__ambientAudio = ambientAudio;
+  document.addEventListener('pointerdown', () => ambientAudio.start(), { once: true });
+  document.addEventListener('keydown', () => ambientAudio.start(), { once: true });
+
+  // === ?????? ===
+    const OPENING_LINES = [
+      "千年前，半神法师艾瑟林在大陆中心设下预言：当人类、精灵、矮人、兽人四族同时抵达殿心，封印将解除——释放能满足一切心愿、或毁灭一切贪念的力量。",
+      "千年后，四族探险者找到了这座殿。殿门在他们踏入的瞬间封死，一个声音在所有人脑海中响起：「心中所念，即为钥匙。证明你们的灵魂值得。」",
+      "你是第五个进入殿中的人——不属于任何与这座殿有宿怨的种族。千年来第一个无关之人。守护灵的目光，落在了你身上。",
+      "冒险者将陆续到访。点「⏭ 等待…」请他们入场，点名字标签与他们对话。你的每一句话，都在改变他们的关系，与这座殿的结局。",
+    ];
+    // opening bypassed - direct FPS entry
+    setTimeout(() => {
+      const fc = window.__fpsController;
+      if (fc && fc.mode === 'overview') fc.setMode('fps');
       document.getElementById('loading').classList.add('hidden');
+    }, 400);
+
+    document.getElementById('loading').classList.add('hidden');
     }, 600);
 
     // 场景氛围（暖光 + 墙面装饰 + 地面细节）——放在所有声明之后避免 TDZ
@@ -3920,7 +4140,7 @@
     // 场景道具加载器（Poly Haven 家具 FBX，替换部分程序化几何体）
     new Props({ THREE, FBXLoader, scene });
 
-    // 设置面板（按键提示开关/灵敏度/改键）
+    // 设置面板（按键提示开关/灵敏度/改键/画质档位/性能监控）
     const settings = new Settings({
       onApply: (s) => {
         // 按键提示显隐
@@ -3933,13 +4153,16 @@
           fpsController.toggleKey = s.toggleKey;
           fpsController.runKey = s.runKey;
         }
+        // 画质档位
+        if (s.quality) applyQuality(s.quality);
+        // 性能监控 HUD 开关
+        perf.setVisible(s.showPerf !== false);
       },
     });
     // 初始应用
-    settings.onApply(settings.get ? { showHints: settings.get('showHints'), sensitivity: settings.get('sensitivity'), toggleKey: settings.get('toggleKey'), runKey: settings.get('runKey') } : {});
+    settings.onApply({ showHints: settings.get('showHints'), sensitivity: settings.get('sensitivity'), toggleKey: settings.get('toggleKey'), runKey: settings.get('runKey'), quality: settings.get('quality'), showPerf: settings.get('showPerf') });
 
-    // 引导系统：显示开场目标卡片 + 同步当前阶段目标
-    guidance.showIntro();
+    // 引导系统：同步当前阶段目标（开场卡片已 bypass，直接进入 FPS）
     guidance.setStage(currentPhase);
 
     // UI 面板可拖动（位置持久化；右下角「调整布局 / 固定 / 重置」）
@@ -3957,9 +4180,7 @@
     animate();
 
     // 默认进入第一人称视角（开场卡关闭后即为沉浸视角）
-    setTimeout(() => {
-      if (fpsController.mode === 'overview') fpsController.setMode('fps');
-    }, 800);
+    // (自动切入第一人称已移至开场结束后触发)
 
     console.log('🏛️  封印之殿 — Sealed Hall — 3D 场景已就绪');
     console.log('  拖拽旋转 | 滚轮缩放 | 右键平移');

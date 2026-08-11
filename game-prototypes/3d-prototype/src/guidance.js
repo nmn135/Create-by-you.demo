@@ -156,6 +156,8 @@ export class Guidance {
   // ------------------------------------------------------------
   _buildIntro() {
     const el = document.createElement('div');
+    // g-intro 卡片已移除（开场改用黑屏打字）
+    return;
     el.id = 'g-intro';
     el.className = 'g-overlay';
     el.innerHTML = `
@@ -184,11 +186,15 @@ export class Guidance {
   }
 
   showIntro() {
-    document.getElementById('g-intro').classList.remove('hidden');
+    const el = document.getElementById('g-intro');
+    if (!el) return; // g-intro 卡片未创建（开场已改直接进入）时静默跳过，避免 null 崩溃
+    el.classList.remove('hidden');
   }
 
   hideIntro() {
-    document.getElementById('g-intro').classList.add('hidden');
+    const el = document.getElementById('g-intro');
+    if (!el) return;
+    el.classList.add('hidden');
   }
 
   // ------------------------------------------------------------

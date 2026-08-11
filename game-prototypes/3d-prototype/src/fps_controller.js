@@ -28,6 +28,8 @@ export class FPSController {
     this.direction = new THREE.Vector3();
     // 初始朝殿内（+Z 方向）：玩家在入口 (0,0,-5.5)，面壁朝 -Z，转 PI 朝 +Z 看大厅
     this.euler = new THREE.Euler(0, Math.PI, 0, 'YXZ');
+    this.yawTarget = Math.PI;      // 平滑转向目标（yaw）
+    this.pitchTarget = 0;       // 平滑转向目标（pitch）
     this.tpsEuler = new THREE.Euler(0.35, 0, 0, 'YXZ');  // 第三人称俯角
     this.moveSpeed = 4.0;
     this.runSpeed = 7.5;
@@ -235,7 +237,7 @@ export class FPSController {
     // 点击进入第一/三人称鼠标控制
     window.addEventListener('click', (e) => {
       if (this.mode === 'overview') return;
-      if (e.target && e.target.closest && e.target.closest('input, textarea, button, #fps-hint, .g-overlay, #ui-layout-controls')) return;
+      if (e.target && e.target.closest && e.target.closest('input, textarea, button, #fps-hint, .g-overlay, #ui-layout-controls, #opening-overlay')) return;
       if (document.pointerLockElement) return;
       document.body.requestPointerLock && document.body.requestPointerLock();
     });
@@ -246,21 +248,31 @@ export class FPSController {
       if (this.mode === 'overview') return;
       if (document.pointerLockElement === document.body) {
         const sens = 0.0022 * this.sensitivity;
-        this.euler.y -= e.movementX * sens;
-        this.euler.x -= e.movementY * sens;
-        this.euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, this.euler.x));
-        this.tpsEuler.y = this.euler.y;
+        // Clamp per-event delta to prevent flash-back from abnormal movementX/Y spikes
+        const mx = Math.max(-200, Math.min(200, e.movementX));
+        const my = Math.max(-200, Math.min(200, e.movementY));
+        this.yawTarget -= mx * sens;
+        this.pitchTarget = Math.max(-1.25, Math.min(1.25, this.pitchTarget - my * sens)); // pitch clamp ~71.6 deg, avoid gimbal lock
+        this.tpsEuler.y = this.yawTarget;
       } else if (dragging) {
-        this.euler.y -= (e.clientX - lastX) * 0.005 * this.sensitivity;
-        this.euler.x -= (e.clientY - lastY) * 0.005 * this.sensitivity;
-        this.euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, this.euler.x));
-        this.tpsEuler.y = this.euler.y;
+        const dx2 = e.clientX - lastX, dy2 = e.clientY - lastY;
+        if (Math.abs(dx2) < 150) this.yawTarget -= dx2 * 0.005 * this.sensitivity;
+        if (Math.abs(dy2) < 150)
+        this.pitchTarget = Math.max(-1.25, Math.min(1.25, this.pitchTarget - (e.clientY - lastY) * 0.005 * this.sensitivity));
+        this.euler.x = Math.max(-1.25, Math.min(1.25, this.euler.x)); // pitch clamp ~71.6 deg, avoid gimbal lock
+        this.tpsEuler.y = this.yawTarget;
         lastX = e.clientX; lastY = e.clientY;
+      }
+    });
+    // Reset mouse state on pointer lock change (prevent flash-back on fast mouse movement)
+    document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement === document.body) {
+        lastX = 0; lastY = 0; // will be set on next mousemove
       }
     });
     document.addEventListener('mousedown', (e) => {
       if (this.mode === 'overview') return;
-      if (e.target && e.target.closest && e.target.closest('input, textarea, button, .g-overlay, #ui-layout-controls')) return;
+      if (e.target && e.target.closest && e.target.closest('input, textarea, button, .g-overlay, #ui-layout-controls, #opening-overlay')) return;
       if (document.pointerLockElement) return;
       dragging = true; lastX = e.clientX; lastY = e.clientY;
     });
@@ -307,6 +319,8 @@ export class FPSController {
       // 相机从玩家位置开始，朝殿内（+Z）
       this.camera.position.set(this.pos.x, this.pos.y + this.eyeHeight, this.pos.z);
       this.euler.set(0, Math.PI, 0, 'YXZ');
+      this.yawTarget = Math.PI;
+      this.pitchTarget = 0;
       if (mode === 'tps') this.tpsEuler.set(0.35, Math.PI, 0, 'YXZ');
     }
     console.log('[视角] 切换 →', mode);
@@ -356,6 +370,16 @@ export class FPSController {
     const b = this.bounds;
     this.pos.x = Math.max(b.minX, Math.min(b.maxX, this.pos.x));
     this.pos.z = Math.max(b.minZ, Math.min(b.maxZ, this.pos.z));
+
+    // ---- 平滑转向：euler 向目标 lerp（角度环绕，消除瞬移/卡顿）----
+    {
+      let dy = this.yawTarget - this.euler.y;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      this.euler.y += dy * Math.min(15 * dt, 1);
+      const dp = this.pitchTarget - this.euler.x;
+      this.euler.x += dp * Math.min(15 * dt, 1);
+    }
 
     // ---- 应用相机 ----
     if (this.mode === 'fps') {

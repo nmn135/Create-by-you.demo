@@ -14,6 +14,8 @@ const DEFAULTS = {
   sensitivity: 1.0,
   toggleKey: 'c',
   runKey: 'shift',
+  quality: 'high',      // 画质档位：high / medium / low
+  showPerf: true,       // 性能监控 HUD 显示
 };
 
 export class Settings {
@@ -123,10 +125,25 @@ export class Settings {
           <option value="r">R</option>
         </select>
       </div>
+      <div class="set-row">
+        <label>画质档位</label>
+        <select id="set-quality">
+          <option value="high">高（默认）</option>
+          <option value="medium">中</option>
+          <option value="low">低</option>
+        </select>
+      </div>
+      <div class="set-row">
+        <label>性能监控</label>
+        <select id="set-showperf">
+          <option value="1">显示（P 键开关）</option>
+          <option value="0">隐藏</option>
+        </select>
+      </div>
       <div class="set-keys">
-        <b>WASD</b> 移动 · <b>Shift</b> 奔跑 · <b>空格</b> 跳 · <b>Ctrl</b> 蹲<br>
+        <b>WASD</b> 移动 · <b>Shift</b> 奔跑 · <b>空格</b> 跳 · <b>Z</b> 蹲<br>
         <b>C</b> 切换视角 · <b>点击</b> 锁定鼠标 · <b>Esc</b> 释放<br>
-        <b>V</b> 关系网 · <b>M</b> 记忆 · <b>H</b> 帮助 · <b>T</b> 对话演出
+        <b>V</b> 关系网 · <b>M</b> 记忆 · <b>H</b> 帮助 · <b>T</b> 对话演出 · <b>P</b> 性能
       </div>
       <button id="settings-close">关闭</button>
     `;
@@ -138,11 +155,15 @@ export class Settings {
     this.sensRange = panel.querySelector('#set-sens');
     this.toggleSel = panel.querySelector('#set-togglekey');
     this.runSel = panel.querySelector('#set-runkey');
+    this.qualitySel = panel.querySelector('#set-quality');
+    this.showPerfSel = panel.querySelector('#set-showperf');
 
     this.hintsSel.value = this.settings.showHints ? '1' : '0';
     this.sensRange.value = this.settings.sensitivity;
     this.toggleSel.value = this.settings.toggleKey;
     this.runSel.value = this.settings.runKey;
+    this.qualitySel.value = this.settings.quality || 'high';
+    this.showPerfSel.value = this.settings.showPerf !== false ? '1' : '0';
 
     this.hintsSel.addEventListener('change', () => {
       this.settings.showHints = this.hintsSel.value === '1';
@@ -158,6 +179,14 @@ export class Settings {
     });
     this.runSel.addEventListener('change', () => {
       this.settings.runKey = this.runSel.value;
+      this._save();
+    });
+    this.qualitySel.addEventListener('change', () => {
+      this.settings.quality = this.qualitySel.value;
+      this._save();
+    });
+    this.showPerfSel.addEventListener('change', () => {
+      this.settings.showPerf = this.showPerfSel.value === '1';
       this._save();
     });
     panel.querySelector('#settings-close').addEventListener('click', () => this.close());
@@ -180,4 +209,11 @@ export class Settings {
 
   /** 供其他模块读取设置 */
   get(key) { return this.settings[key]; }
+
+  /** 程序化改画质档位（自动降级用）：保存并触发 onApply，UI 同步 */
+  setQuality(q) {
+    this.settings.quality = q;
+    if (this.qualitySel) this.qualitySel.value = q;
+    this._save();
+  }
 }
