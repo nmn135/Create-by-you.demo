@@ -25,6 +25,7 @@ tags: [game-design, sealed-hall, handoff]
 | 4 | 失言判定 + 关系网可视化 | ✅ 完成 |
 | 5 | 结局路线测试 + 4 缺口修复 | ✅ 完成（46/46 通过） |
 | 6 | 出场节奏优化 + 前后端契约修复 | ✅ 完成（30+46+16 全绿） |
+| 7 | reasonix 破坏修复 + 性能/画质模块 | ✅ 完成（commit 8b4d82e，实测可玩） |
 
 ## 三、后台 Agent（均已完成）
 
@@ -292,4 +293,50 @@ python server.py                 # 启动服务器
 - 场景道具需从素材库选择更精致的 GLB 模型替换（可选）
 - 设置面板（隐藏按键提示/改键）
 - 玩家模型可换（素材库有多个候选）
+
+
+## 十六、2026-08-12 reasonix 改动修复 + 会话恢复
+
+> reasonix（外部 AI 工具）用 three-player-controller 替换手写控制器时误删关键 DOM，导致游戏卡在开头画面，5 轮修复未果。已从 git HEAD 完整恢复并提交（commit 8b4d82e），用户实测可玩。
+
+### 根因（reasonix 删了不该删的）
+
+| # | 问题 | 影响 |
+|:--:|------|------|
+| 1 | `#canvas-container` 被删 | 渲染器无处挂载 → 模块顶层崩溃 → 卡死 |
+| 2 | 20 个对话 UI 元素整块删除（对话历史/输入框/NPC标签/提示/演出面板等） | 对话系统整体失效 |
+| 3 | 开场卡"半删"（showIntro 引用已删元素） | TypeError → animate() 永不执行 |
+| 4 | `NPC_ENTRANCE_STAGE` TDZ ×4 | 模型回调在 const 初始化前触发 |
+
+### 修复内容（commit 8b4d82e）
+
+- 从 git HEAD `a6012df` 完整恢复被删 UI 区块 + 修复悬空 `</div>`
+- `guidance.js` showIntro/hideIntro 加 null 守卫
+- `NPC_ENTRANCE_STAGE` 定义上移至模块顶部
+- `server.py` 加 no-cache 头（消除浏览器缓存旧页面）
+- `start_game.bat` 启动前自动杀 8080 旧实例（保证全新阶段）
+
+### 顺带保留（reasonix 留下的可用模块）
+
+- `src/perf.js`：FPS/渲染统计 HUD + 画质档位（高/中/低），P 键开关
+- `src/audio.js`：音频模块
+- `settings.js`：画质档位 + 性能监控开关
+- 新模型：`liana_tpose.fbx` / `liana_idle.fbx` / `rog_walk.fbx`
+- `game-prototypes/AGENTS.md`：Agent Memory Hub（新会话进项目先读它）
+
+### 仓库整理
+
+- reasonix 在 `game-prototypes/` 内误建的嵌套 git 仓库（5 个失败 commit）已移至 `.git.reasonix-bak`（保留备份，已 gitignore）
+- 废弃依赖 `node_modules/`、`package.json`（three-player-controller：调研确认需 three≥0.180，项目为 0.160，无法接入）已 gitignore
+
+### 验证
+
+- headless 自动化零运行时错误；WASD/切视角/Enter 输入/UI 全通
+- 用户实测可玩；git 工作区干净
+- 注意：浏览器需 **Ctrl+F5** 强刷一次（清除旧缓存）
+
+### 会话恢复
+
+- 丢失会话完整记录：`C:\Users\11988\.claude\projects\D--EDGE-obsidian\8182a96f-3318-453b-ae91-937a1fa8a5af.jsonl`
+- 可 `claude --resume 8182a96f-3318-453b-ae91-937a1fa8a5af` 接续
 
