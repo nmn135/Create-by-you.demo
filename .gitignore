@@ -1,0 +1,22 @@
+# 日志与临时文件
+*.log
+*.tmp
+_ai_stdout.log
+_ai_err.log
+_srv.log
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 编辑器
+.vscode/
+.idea/
+
+# Reasonix 本地配置（不共享个人环境）
+.reasonix/
+
+# 临时测试截图
+shot_*.png
+view_*.png
+npc_*.png
