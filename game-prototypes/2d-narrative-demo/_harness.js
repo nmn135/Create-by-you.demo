@@ -95,7 +95,16 @@ const context = {
   setTimeout, clearTimeout, setInterval, clearInterval,
   isNaN, parseFloat, parseInt, isFinite, encodeURIComponent, decodeURIComponent,
   window: null, document: null, localStorage, performance: performanceStub,
-  Image: ImageStub, AudioContext: class { constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; } resume() { this.state = 'running'; } createOscillator() { return { frequency: {}, type: '', connect() {}, start() {}, stop() {} }; } createGain() { return { gain: {}, connect() {} }; } },
+  Image: ImageStub, AudioContext: class {
+    constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; }
+    resume() { this.state = 'running'; }
+    createOscillator() { return { frequency: {}, type: '', connect() {}, start() {}, stop() {} }; }
+    createGain() {
+      const g = { gain: {} };
+      g.gain.setValueAtTime = () => {}; g.gain.exponentialRampToValueAtTime = () => {};
+      g.connect = () => {}; return g;
+    }
+  },
   requestAnimationFrame(fn) { rafCallbacks.push(fn); return rafCallbacks.length; },
   fetch: fetchStub,
 };
@@ -366,6 +375,20 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
     if (!avc._calls.some(c => c[0] === 'drawImage')) throw new Error('PNG 覆盖未走 drawImage');
     G.debugCloseDialogue();
     p.complete = false; p.naturalWidth = 0;
+  });
+
+  // 18. 音频系统（M 静音 / init / sfx / BGM 不抛错）
+  run('音频静音开关(M 键)', () => {
+    context.document.dispatchKey('KeyM');
+    if (!G.muted) throw new Error('M 未静音');
+    context.document.dispatchKey('KeyM');
+    if (G.muted) throw new Error('M 未恢复');
+  });
+  run('音频 init/sfx/BGM 不抛错', () => {
+    G.audio.init();
+    G.audio.sfx('open'); G.audio.sfx('close'); G.audio.sfx('send');
+    G.audio.sfx('secret'); G.audio.sfx('step'); G.audio.sfx('ending');
+    G.audio.switchBgm('day7'); G.audio.switchBgm('day2'); G.audio.stopBgm();
   });
 
   console.log('\n========== 结果 ==========');

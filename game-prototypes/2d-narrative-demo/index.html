@@ -364,6 +364,7 @@ function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
 const player = { x: 30, vx: 0, facing: 'right', moving: false };
 const AV = 70;
 let t = 0;
+let stepT = 0;   // 脚步音效节拍器
 
 // ---------- 状态机 ----------
 let state = 'boot';      // boot | explore | dialogue | cutscene | meta
@@ -387,6 +388,103 @@ const dlgInput = el('dlg-input'), dlgSend = el('dlg-send');
 const eventOv = el('event'), eventText = el('event-text'), eventSub = el('event-sub');
 const banner = el('banner');
 const av = el('dlg-avatar');
+
+// ---------- 音频（背景音乐 + 音效） ----------
+// 文件优先：audio/bgm_day7.ogg、audio/bgm_day2.ogg 等存在则用；否则程序化占位。
+// 浏览器自动播放策略：首次点击/按键（用户手势）后才初始化 AudioContext。
+const AudioSys = (() => {
+  let ac = null, master = null, muted = false, bgmTimer = null, currentScene = null;
+  try { muted = localStorage.getItem('seventhDayMuted') === '1'; } catch (e) {}
+
+  function ensure() {
+    if (ac) { try { if (ac.state === 'suspended') ac.resume(); } catch (e) {} return true; }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ac = new AC();
+      master = ac.createGain();
+      master.gain.value = muted ? 0 : 0.5;
+      master.connect(ac.destination);
+      return true;
+    } catch (e) { return false; }
+  }
+  function init() { if (ensure() && currentScene && !bgmTimer) startBgm(currentScene); }
+
+  function setMuted(m) {
+    muted = !!m;
+    try { localStorage.setItem('seventhDayMuted', muted ? '1' : '0'); } catch (e) {}
+    if (master) master.gain.value = muted ? 0 : 0.5;
+    if (muted) stopBgm(); else if (currentScene && !bgmTimer) startBgm(currentScene);
+  }
+  function toggleMute() { setMuted(!muted); return muted; }
+
+  // ---- 程序化 SFX（无音频文件时的占位音） ----
+  function sfx(type) {
+    try {
+      if (!ensure() || muted) return;
+      const now = ac.currentTime;
+      const env = (dur, vol) => {
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(vol, now + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+        g.connect(master);
+        return g;
+      };
+      const osc = (freq, t2, dur, vol) => {
+        const o = ac.createOscillator();
+        o.type = t2; o.frequency.value = freq;
+        o.connect(env(dur, vol)); o.start(now); o.stop(now + dur + 0.05);
+      };
+      switch (type) {
+        case 'open': osc(520, 'square', 0.09, 0.035); osc(780, 'square', 0.07, 0.02); break;
+        case 'close': osc(420, 'square', 0.06, 0.025); break;
+        case 'send': osc(660, 'triangle', 0.1, 0.04); break;
+        case 'bubble': osc(440, 'sine', 0.07, 0.03); break;
+        case 'hint': osc(880, 'sine', 0.06, 0.02); break;
+        case 'step': osc(150, 'triangle', 0.05, 0.018); break;
+        case 'secret': [523, 659, 784].forEach((f, i) => setTimeout(() => { try { osc(f, 'sine', 0.2, 0.045); } catch (e) {} }, i * 90)); break;
+        case 'ending': [392, 523, 659, 784].forEach((f, i) => setTimeout(() => { try { osc(f, 'sine', 0.35, 0.06); } catch (e) {} }, i * 150)); break;
+      }
+    } catch (e) { /* 音频不可用则静默 */ }
+  }
+
+  // ---- BGM：程序化氛围 loop（文件优先在此省略，后续可加 <audio>） ----
+  const DAY7_PATTERN = { stepMs: 1150, notes: [0, 220, 0, 261.63, 0, 329.63, 0, 261.63] };
+  const DAY2_PATTERN = { stepMs: 1500, notes: [146.83, 0, 174.61, 0, 220, 0, 146.83, 0] };
+  function bgmNote(freq) {
+    try {
+      if (!ac || muted) return;
+      const now = ac.currentTime;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.05, now + 0.1);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
+      g.connect(master);
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+      o.connect(g); o.start(now); o.stop(now + 1.7);
+    } catch (e) {}
+  }
+  function startBgm(scene) {
+    currentScene = scene;
+    stopBgm();
+    if (muted) return;
+    const pat = scene === 'day2' ? DAY2_PATTERN : DAY7_PATTERN;
+    let i = 0;
+    const tick = () => {
+      if (!currentScene) return;
+      const n = pat.notes[i % pat.notes.length];
+      if (n > 0) bgmNote(n);
+      i++;
+    };
+    tick();
+    bgmTimer = setInterval(tick, pat.stepMs);
+  }
+  function stopBgm() { if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; } }
+  function switchBgm(scene) { startBgm(scene); }
+
+  return { ensure, init, sfx, toggleMute, setMuted, startBgm, stopBgm, switchBgm, get muted() { return muted; } };
+})();
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -752,6 +850,7 @@ function updateHud() {
 let keys = {};
 document.addEventListener('keydown', e => {
   keys[e.code] = true;
+  AudioSys.init();
   if (e.code === 'Escape' && introRunning) { e.preventDefault(); endIntro(); return; }
   if (e.code === 'KeyM') { AudioSys.toggleMute(); banner.textContent = AudioSys.muted ? '声音已关闭（M 开启）' : '声音已开启（M 关闭）'; }
   if (e.code === 'KeyE' && state === 'explore') {
@@ -777,6 +876,8 @@ function loop(now) {
     player.x = Math.max(12, Math.min(W - 12, player.x));
     player.moving = player.vx !== 0;
     if (player.vx !== 0) player.facing = player.vx > 0 ? 'right' : 'left';
+    if (player.moving) { stepT -= dt; if (stepT <= 0) { stepT = 0.28; AudioSys.sfx('step'); } }
+    else stepT = 0;
     tickNpcs(dt);
     tickGossip(dt);
   }
@@ -792,6 +893,7 @@ requestAnimationFrame(loop);
 
 // ---------- 对话 ----------
 function openDialogue(id) {
+  AudioSys.sfx('open');
   state = 'dialogue';
   dialogNpc = id;
   metaDialogue = id === 'meta';
@@ -824,6 +926,7 @@ function openDialogue(id) {
 }
 
 function closeDialogue() {
+  AudioSys.sfx('close');
   state = 'explore';
   dialogNpc = null;
   metaDialogue = false;
@@ -964,6 +1067,7 @@ async function sendMessage() {
   const text = dlgInput.value.trim();
   if (!text || busy) return;
   dlgInput.value = '';
+  AudioSys.sfx('send');
   appendLog('你', text);
   setBusy(true);
 
@@ -1028,6 +1132,7 @@ async function sendMessage() {
 
   // 3. 秘密被说破
   if (data.secret && SECRETS[data.secret]) {
+    AudioSys.sfx('secret');
     playerSecrets.add(data.secret);
     if (npc) secretsKnownBy[partnerId].add(data.secret);
     const ft = SECRETS[data.secret];
@@ -1127,6 +1232,7 @@ async function triggerScratch2() {
   world.gossipLevel = 1;
   world.scene = 'day2';
   world.dayCycle += 1;
+  AudioSys.switchBgm('day2');
   playBell(0);
   eventOv.classList.add('on');
   eventText.textContent = '夜幕落下……';
@@ -1293,13 +1399,14 @@ if (!localStorage.getItem(SAVE_KEY)) {
   bootSub.textContent = '还没有记忆。走进这座城，开始你的故事。';
 }
 el('btn-continue').addEventListener('click', () => {
+  AudioSys.init();
   if (loadGame()) { playIntro(); }
   else {
     bootSub.textContent = '存档损坏或版本不符，将开始新的故事。';
     setTimeout(() => { clearSave(); playIntro(); }, 900);
   }
 });
-el('btn-new').addEventListener('click', () => { clearSave(); playIntro(); });
+el('btn-new').addEventListener('click', () => { AudioSys.init(); clearSave(); playIntro(); });
 
 // ---------- 调试钩子 ----------
 window.__game = {
@@ -1319,6 +1426,9 @@ window.__game = {
   get bellPos() { return { ...BELL_POS }; },
   get doorPos() { return { ...DOOR_POS }; },
   debugSetBellPos: (x, y) => { BELL_POS.x = x; BELL_POS.y = y; },
+  audio: AudioSys,
+  get muted() { return AudioSys.muted; },
+  toggleMute: () => AudioSys.toggleMute(),
   debugLearnSecret: sid => playerSecrets.add(sid),
   debugResetSecrets: () => playerSecrets.clear(),
   debugApplyDeltas: applyDeltas,
