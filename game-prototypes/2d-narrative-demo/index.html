@@ -148,6 +148,11 @@ const bgDay2 = new Image();
 bgDay2.src = 'bg_day2.png';
 function day2ArtReady() { return bgDay2.complete && bgDay2.naturalWidth > 0; }
 
+// ---------- 钟楼 / 门 对齐参数（手动调这里即可，无需改绘制逻辑） ----------
+// 与场景图（bg.png / bg_day2.png）里的钟楼塔尖、当铺门对齐
+const BELL_POS = { x: 160, y: 24 };          // 钟（敲第十三下那口钟）锚点
+const DOOR_POS = { x: 144, y: GROUND - 26 }; // 门（左下角）
+
 // ---------- 世界状态 ----------
 const world = {
   dayCycle: 7,           // 第七天，第 7 次循环
@@ -512,7 +517,7 @@ function drawHint() {
 
 // ---------- 钟 / 门 / 雾 ----------
 function drawBell() {
-  const bx = 160, by = 24;
+  const bx = BELL_POS.x, by = BELL_POS.y;
   ctx.fillStyle = '#8a6a2b'; ctx.fillRect(bx - 4, by, 8, 12);
   ctx.fillStyle = '#C9A86A'; ctx.fillRect(bx - 6, by + 10, 12, 2);
   ctx.fillStyle = '#a08040'; ctx.fillRect(bx - 1, by - 2, 2, 4);
@@ -527,12 +532,13 @@ function drawBell() {
 }
 
 function drawDoor() {
+  const x = DOOR_POS.x, y = DOOR_POS.y;
   ctx.fillStyle = '#5a3a20';
-  ctx.fillRect(138, GROUND - 26, 12, 26);
+  ctx.fillRect(x - 6, y, 12, 26);
   ctx.fillStyle = '#3a2010';
-  ctx.fillRect(141, GROUND - 24, 6, 24);
+  ctx.fillRect(x - 3, y + 2, 6, 24);
   ctx.fillStyle = '#ffd78c';
-  ctx.fillRect(147, GROUND - 14, 1, 1);
+  ctx.fillRect(x + 3, y + 12, 1, 1);
 }
 
 function drawMoon(c1, c2) {
@@ -1199,6 +1205,9 @@ window.__game = {
   get lastReplies() { return Object.fromEntries(Object.keys(npcs).map(id => [id, npcs[id].lastReply])); },
   get cam() { return { ...cam }; },
   get reputation() { return world.reputation; },
+  get bellPos() { return { ...BELL_POS }; },
+  get doorPos() { return { ...DOOR_POS }; },
+  debugSetBellPos: (x, y) => { BELL_POS.x = x; BELL_POS.y = y; },
   debugLearnSecret: sid => playerSecrets.add(sid),
   debugResetSecrets: () => playerSecrets.clear(),
   debugApplyDeltas: applyDeltas,
