@@ -55,6 +55,33 @@ Mayor (NPC)                     ← npc.tscn 的实例
 
 玩家的新花样：`@onready var _prompt: Label = get_node("../UI/Prompt")` —— **等树就绪**再取引用，`../` 表示父节点；`_unhandled_input()` 接住 E 键事件（`InputEventKey`，`physical_keycode == KEY_E`）。靠近 NPC 时底部弹出提示，按 E 会得到一句"对话面板下节课做"的占位回应。
 
+## 第三课 · 对话面板 + 信号（signal）
+
+按 E 靠近 NPC → 弹出对话面板 → 逐句看台词 → 看完关闭。
+
+新增：
+- `scenes/dialogue_panel.tscn` + `scripts/dialogue_panel.gd` —— 对话面板（挂在 UI 层）
+- `npc.gd` 加 `@export var lines: Array[String]` —— 每个 NPC 的台词（Inspector 里写）
+- `player.gd`：按 E → `_dialogue.open(npc.npc_name, npc.lines)`
+
+**信号（signal）＝ 节点"喊一声"，谁连了谁响应**。核心一行：
+
+```gdscript
+_next_button.pressed.connect(_on_next_pressed)
+# "继续按钮被按下"这个信号 → 连到"下一句"方法
+```
+
+**踩坑记录（重要）**：场景文件在 Godot 编辑器里开着时，外部直接改文件会被编辑器的保存覆盖。场景开着时，改动要在编辑器里做（如拖拽实例化）。
+
+```
+UI (CanvasLayer)                 ← 第三课版
+├── Prompt (Label)               ← "E 交谈"提示
+└── DialoguePanel (PanelContainer)
+    ├── NameLabel                ← NPC 名字
+    ├── TextLabel                ← 台词（自动换行）
+    └── Next (Button)            ← 继续（pressed → 下一句）
+```
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -94,7 +121,7 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 
 ## 下一步（学完这些再往上加）
 
-- [ ] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）——下节课：按 E 弹出对话面板
+- [x] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）——第三课完成 ✅
 - [ ] 输入映射（Input Map，把 A/D/E 也定义成动作，替换物理键直查）
 - [ ] 碰撞：NPC 也带碰撞盒，玩家不能穿人
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
