@@ -163,6 +163,8 @@ function buildSystemPrompt(body) {
     if (ws.bellStruck) wsParts.push('钟楼敲过第十三下');
     if (ws.gossipLevel) wsParts.push('城里在传流言');
     if (ws.doorVisible) wsParts.push('出现一扇本不存在的门');
+    if (ws.fragments) wsParts.push('你收下了当铺老板那批"话"');
+    if (ws.inkDone) wsParts.push('三道刻痕已齐，作者的墨归位');
     lines.push('世界：' + (wsParts.join('，') || '第七天如常') + '。');
     // 解锁判定：把条件布尔渲染进 persona 提示
     const unlocks = buildUnlocks(npcId, body, rep);
@@ -173,7 +175,7 @@ function buildSystemPrompt(body) {
   if (!metaMode) lines.push('角色锚定：你就是「' + (NPC_NAMES[npcId] || npcId) + '」。回复里的动作描写（括号内）必须以你自己的名字或"我"为主语，严禁把市长、当铺老板、说书人等其他角色的名字写成动作主语（除非在转述他人）。');
   lines.push('记忆规则：自然引用你记得的往事或玩家说过的话（"你上次不是说…"），每次最多提1-2条，别机械复述，别一次性全抖出来。');
   lines.push('只输出一个JSON对象，无其它文字：{"reply":"回复","facts":["新事实"],"repDelta":0,"deltas":{"mayor":{"trust":0,"fear":0,"like":0,"suspect":0}},"node":null,"secret":null}');
-  lines.push('deltas值只取-1/0/+1，id限mayor/pawn/bard，玩家有明显善意/恶意时至少让trust或suspect动一下，别全是0。repDelta只取-1/0/+1，衡量玩家在整座城的"名声"（范围-10~10），只在出现足以被全城议论的大事时动（当面戳破秘密、公开威胁/拯救某人、煽动全城）；普通闲聊一律为0。node：玩家首句剧本外="scratch1"(若钟未破)；向不知道某秘密的人泄密="scratch2"。secret：愿告知秘密则填所属者id(mayor/pawn/bard)，否则null。');
+  lines.push('deltas值只取-1/0/+1，id限mayor/pawn/bard，玩家有明显善意/恶意时至少让trust或suspect动一下，别全是0。repDelta只取-1/0/+1，衡量玩家在整座城的"名声"（范围-10~10），只在出现足以被全城议论的大事时动（当面戳破秘密、公开威胁/拯救某人、煽动全城）；普通闲聊一律为0。node：玩家首句剧本外="scratch1"(若钟未破)；向不知道某秘密的人泄密="scratch2"；你(市长)决定带玩家去钟楼="walk_clock"；三道刻痕齐且玩家把作者的墨还给说书人="scratch3"。secret：愿告知秘密则填所属者id(mayor/pawn/bard)，否则null。');
 
   return lines.join('\n');
 }
@@ -241,6 +243,59 @@ async function talk(body) {
   return { reply: fixStageDir(content.trim() || '…', NPC_NAMES[body.npc]), facts: [], deltas: {}, repDelta: 0, node: null, secret: null, offline: false };
 }
 
+// ---------- 无限结局：对作者说最后一句话，LLM 现场生成结局 ----------
+const ENDINGS = ['续写', '合卷', '抹去', '坦白之后'];
+
+function buildEndingPrompt(body) {
+  const ws = body.worldState || {};
+  const rep = Number(body.reputation) || 0;
+  const ending = ENDINGS.includes(body.ending) ? body.ending : '续写';
+  const lines = [
+    '你正在为像素叙事游戏《第七天》生成结局。你是"作者"——这座没写完的城的主人。',
+    '玩家在对你说最后一句话，这句将决定这座城的命运。',
+    '玩家的最后一句话：「' + String(body.finalLine || '……').slice(0, 120) + '」',
+    '世界状态：' + [
+      ws.bellStruck ? '刻痕一已破(钟楼第十三下)' : '刻痕一未破',
+      ws.gossipLevel ? '刻痕二已破(秘密上墙)' : '刻痕二未破',
+      ws.inkDone ? '刻痕三已破(作者的墨归位)' : '刻痕三未破',
+      '循环' + (ws.dayCycle != null ? ws.dayCycle : 7) + '次',
+      (rep >= 0 ? '名声' + rep : '名声' + rep + '(全城敌视)'),
+    ].join('，') + '。',
+    '作者曾向玩家坦白："我改不了任何底层代码。这一千次循环，我都在配合你演。"' + (body.authorConfessed ? '（玩家已听过这句坦白）' : '（玩家还没听到这句坦白）'),
+  ];
+  lines.push('世界线已定为「' + ending + '」——严格按这条世界线写结局，不要更改。');
+  lines.push('世界线含义：续写=接过笔为城写下结局/城完成/迎来第八天；合卷=拒绝续写/让城停在未完成/循环永续但城中人保留记忆；抹去=摧毁那支笔/城停止放映/一切归于空白；坦白之后=在作者坦白之后选择相信、拥抱这份假的真诚。');
+  lines.push('请只做一件事：用玩家那句话的灵魂，为这条世界线现写一段2~4句的结局(epilogue)。要具体、有画面、能当结局字幕；如果玩家那句话重要，原句或化用地融进去。');
+  lines.push('只输出一个JSON对象，无其它文字：{"epilogue":"……"}');
+  return lines.join('\n');
+}
+
+async function endgame(body) {
+  const { provider, key } = getConfig();
+  const ending = ENDINGS.includes(body.ending) ? body.ending : null;
+  if (!key) return { ending, epilogue: null, offline: true };
+  const P = PROVIDERS[provider];
+  const sys = buildEndingPrompt(body);
+  const resp = await fetch(P.endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify({
+      model: P.model,
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: body.finalLine || '……' }],
+      max_tokens: 220,
+      temperature: 0.9,
+    }),
+  });
+  const json = await resp.json();
+  if (!resp.ok) return { ending, epilogue: null, error: true };
+  const content = json.choices?.[0]?.message?.content || '';
+  const parsed = parseJson(content);
+  if (parsed && typeof parsed.epilogue === 'string' && parsed.epilogue.trim()) {
+    return { ending, epilogue: parsed.epilogue.trim(), offline: false };
+  }
+  return { ending, epilogue: content.trim() || null, offline: false };
+}
+
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
 
@@ -255,6 +310,21 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ reply: '（系统故障：' + e.message + '）', error: true }));
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/endgame') {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    try {
+      const body = JSON.parse(raw || '{}');
+      const result = await endgame(body);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ending: null, epilogue: null, error: true, message: e.message }));
     }
     return;
   }
