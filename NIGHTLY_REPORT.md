@@ -6,7 +6,7 @@ tags: [game-design, sealed-hall, nightly-report]
 
 # 封印之殿 夜间汇总报告
 
-> **2026-08-13 项目方向变更**：3D 方案已全部删除（3d-prototype/、server.py、Mixamo/Sketchfab 资产、3D 文档），项目专注 **2D 叙事 demo《第七天》**（`game-prototypes/2d-narrative-demo/`）。本报告为历史归档，3D 时期记录已清理。
+> **2026-08-13 深夜自主会话更新**：2D 叙事 demo《第七天》推进多项功能与修复，详见下方。
 
 ## 当前项目状态（2026-08-13）
 
@@ -15,14 +15,30 @@ tags: [game-design, sealed-hall, nightly-report]
 | 2D 叙事 demo《第七天》 | ✅ 主项目（Canvas 2D + Node + DeepSeek，端口 8890） |
 | 2D 清晰度 | ✅ 3× 分辨率渲染（960×540）+ 字体加大 |
 | 2D 对话速度 | ✅ DeepSeek 引擎（~3s 端到端，doubao 兜底） |
+| 场景图 | ✅ 修复丢失的 bg.png；新增正式 bg_day2.png（第二天） |
+| 第二天场景框架 | ✅ SCENES 状态机，正式图自动替换程序化元素 |
+| 上轮记忆回顾 | ✅ NPC 对话窗口显示上次最后说的话（recap） |
+| 角色锚定 | ✅ 服务端 persona 锚定 + fixStageDir 动作主语兜底 |
+| 玩法打磨 | ✅ 气泡截断/防重叠/对比度，闲聊频率与台词扩充 |
+| 节点分支对话 | ✅ v1：骑砍式话题快捷栏（告别/打听/交易/套话） |
+| 对话相机 | ✅ 对话推近 NPC（lerp 缓动） |
 | 文字原型 text-prototype | ✅ 保留（失言系统/状态机逻辑参考） |
 | 3D 方案 | ❌ 已全部删除（2026-08-13） |
+
+## 本次会话新增（2026-08-13 深夜）
+
+- **修复「游戏坏了」**：根因是场景背景图丢失——`bg.png` 被删，新图误存为 `bd.png`/`bd_day2.png`，游戏加载 404。已改名归位。
+- **loadGame 修复**：载档前重置 world 默认值，旧档缺 `scene` 字段不再残留上次加载状态。
+- **骑砍式话题快捷栏 v1**：对话面板顶部话题按钮（告别/打听消息/交易/试探刻痕/追问真相），条件解锁；告别关闭对话，其余走 AI 自由对话管线；与输入框自由对话并存。
+- **对话相机推近**：进入对话平滑推近说话 NPC（zoom 1.3），结束回全场景。
+- **玩法打磨**：气泡超长文字截断不溢出、相邻气泡上下分层不重叠、提高对比度；闲聊触发更快、台词扩充。
 
 ## 测试状态
 
 - `test_state_machine.py`：**30/30**
 - `tests/test_endings.py`：**46/46**
 - `tests/test_dialogue_scenarios.py`：3 策略/9 轮/0 失言（需 DeepSeek key）
+- **`_harness.js`（2D demo 回归）**：**24/24**（DOM/Canvas 桩：场景渲染/存档/话题栏/相机/气泡）
 
 ## 运行
 
