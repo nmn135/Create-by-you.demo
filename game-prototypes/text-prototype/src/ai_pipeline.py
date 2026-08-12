@@ -1,30 +1,13 @@
 """
 封印之殿 文字原型 — AI 管线
-DeepSeek API 调用：意图解析 + 回复生成（均用 deepseek-chat，快且稳）
+DeepSeek API 调用：意图解析（V4 Pro）+ 回复生成（V4 Flash）
 """
 import json
-import os
 import time
-from pathlib import Path
 from src.config import (
     DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL,
     INTENT_MODEL, REPLY_MODEL, DEBUG_MODE
 )
-
-# ================================================================
-# Prompt 文件加载（prompts/*.txt 为唯一真值，代码只读不内嵌长 prompt）
-# ================================================================
-PROMPT_DIR = Path(__file__).resolve().parent.parent / "prompts"
-
-def _load_prompt(fname, fallback):
-    try:
-        p = PROMPT_DIR / fname
-        if p.exists():
-            return p.read_text(encoding="utf-8")
-    except Exception as e:
-        if DEBUG_MODE:
-            print(f"  [DEBUG] 读取 prompt {fname} 失败: {e}")
-    return fallback
 
 # === 客户端懒加载 ===
 # API Key 缺失时不在导入期崩溃，调用时才报错（由调用方降级处理）
@@ -58,11 +41,10 @@ def _get_client():
         raise
 
 # ================================================================
-# 意图解析器 (deepseek-chat)
+# 意图解析器 (DeepSeek V4 Pro — 高质量)
 # ================================================================
 
-# 优先使用 prompts/intent_parser_v2.txt（完整版：urgency/中文表达/边界情况/上下文感知）
-_INTENT_FALLBACK = """你是一个对话意图解析器。玩家的输入是自然语言，你需要从中提取结构化信息。
+INTENT_SYSTEM_PROMPT = """你是一个对话意图解析器。玩家的输入是自然语言，你需要从中提取结构化信息。
 
 ## 意图类型（10 种）
 - ask_backstory: 询问 NPC 的背景、经历、目的
@@ -104,21 +86,20 @@ _INTENT_FALLBACK = """你是一个对话意图解析器。玩家的输入是自�
 - 如果玩家没有明确指谁，且之前对话已经建立了语境，根据语境判断
 """
 
-INTENT_SYSTEM_PROMPT = _load_prompt("intent_parser_v2.txt", _INTENT_FALLBACK)
-
 def parse_intent(user_input: str, context: str = "") -> dict:
     """
     解析玩家输入为结构化意图。
-    使用 deepseek-chat 保证理解准确度。
+    使用 DeepSeek V4 Pro 保证理解准确度。
     """
     messages = [{"role": "system", "content": INTENT_SYSTEM_PROMPT}]
     if context:
         messages.append({"role": "system", "content": f"当前语境：{context}"})
     messages.append({"role": "user", "content": user_input})
 
-    # 统一用 deepseek-chat（官方模型，~0.3s 响应）；连试 3 次防偶发网络/空响应，
-    # 每次 8s 超时上限——防止单次卡死拖过前端 15s abort（UI 聊天曾因此收不到回复）。
-    models = [INTENT_MODEL, INTENT_MODEL, INTENT_MODEL]
+    # 第 1 次用 INTENT_MODEL（v4-pro，质量高）；v4-pro 08-12 实测持续空响应/卡顿，
+    # 故第 2 次起切 REPLY_MODEL（v4-flash）兜底，并给每次请求 8s 超时上限——
+    # 防止单次卡死拖过前端 15s abort（UI 聊天曾因此收不到回复）。
+    models = [INTENT_MODEL, REPLY_MODEL, REPLY_MODEL]
     for attempt in range(3):
         try:
             response = _get_client().chat.completions.create(
@@ -233,7 +214,7 @@ def _fallback_intent(user_input: str) -> dict:
     }
 
 # ================================================================
-# 回复生成器 (deepseek-chat)
+# 回复生成器 (DeepSeek V4 Flash — 便宜、快)
 # ================================================================
 
 # 情绪→温度映射：不同情绪下语言可预测性不同
@@ -264,7 +245,7 @@ def generate_npc_reply(
 ) -> str:
     """
     生成 NPC 的自然语言回复。
-    使用 prompts/reply_generator_v2.txt 模板 + deepseek-chat。
+    使用 DeepSeek V4 Flash 保证速度和成本。
     """
     mood_colors = {
         "calm": "平静的，有条理的",
@@ -274,100 +255,52 @@ def generate_npc_reply(
         "hopeful": "带着一丝希望，语气温和",
     }
 
-    # --- 条件块：悄悄话 / 失言 / 在场感知 / 记忆 ---
-    whisper_block = ""
+    whisper_note = ""
     if is_whisper:
-        whisper_block = (
-            "⚠️ 这是悄悄话——只有你和玩家能听到。你不会大声说出你的秘密。\n"
-            "但你的肢体语言仍然会被其他人看到——他们会注意到你在和玩家密谈。"
-        )
+        whisper_note = """
+⚠️ 这是悄悄话——只有你和玩家能听到。你不会大声说出你的秘密。
+但你的肢体语言仍然会被其他人看到——他们会注意到你在和玩家密谈。
+"""
 
-    slip_block = ""
-    slip_behavior_section = ""
+    slip_note = ""
     if slip_occurred and revelation_line:
-        slip_block = (
-            "⚠️ 你刚才失言了——你不小心说出了你一直在隐藏的事。\n"
-            f'你的标志性台词是："{revelation_line}"。\n'
-            "说完你才意识到自己说了什么——表情、语气会有一瞬间的崩塌。"
-        )
-        slip_behavior_section = (
-            "按模式 A（试图收回/掩饰）、B（沉默/放弃）或 C（破罐破摔/和盘托出）\n"
-            "中选择一种符合你性格的行为——选择参考「选择指南」。"
-        )
+        slip_note = f"""
+⚠️ 你刚才失言了——你不小心说出了你一直在隐藏的事。
+你的标志性台词应该是："{revelation_line}"
+在这句话之后，你才意识到自己说了什么——你的表情、语气都会有一瞬间的崩塌。
+然后你可以选择：① 试图收回（掩饰） ② 沉默（放弃） ③ 继续说下去（破罐破摔）
+"""
 
-    audience_block = ""
-    audience_awareness_section = ""
-    present_npcs_list = ""
-    if present_npcs and not is_whisper:
-        present_npcs_list = ", ".join(present_npcs)
-        audience_block = "在场感知已激活：你能看到在场的其他人，也能注意到他们的反应。"
-        audience_awareness_section = (
-            "每个回复最多 1 次涉及其他 NPC 的观察；优先使用在关键情绪转折点；"
-            "若话中涉及在场 NPC 的秘密，措辞会更隐晦；若在场有你敌对/不信任的人，话会更少更硬。"
-        )
+    audience = f"在场的其他人：{', '.join(present_npcs or [])}" if (present_npcs and not is_whisper) else ""
 
-    memory_block = "对话记忆：自然延续当前语境，不机械复述。"
-    dialogue_memory_section = (
-        "若语境中有可引用的内容，自然地提及（每 3-5 轮一次）：\n"
-        '  - "你上次问我那个问题——我后来想了想"\n'
-        '  - "你说你无关。但你站在这里——你不像无关的人。"'
-    )
-
-    # 读取 v2 模板（剔除末尾"## 模板变量说明"——那是给 prompt 作者看的，不是给 LLM 的）
-    _reply_tpl = _load_prompt("reply_generator_v2.txt", "")
-    _marker = "\n## 模板变量说明"
-    if _marker in _reply_tpl:
-        _reply_tpl = _reply_tpl.split(_marker, 1)[0]
-    if not _reply_tpl.strip():
-        _reply_tpl = """你是 {npc_name}，一个{npc_race}{npc_title}。
+    system_prompt = f"""你是 {npc_name}，一个{npc_race}{npc_title}。
 
 ## 你的说话风格
 {talk_style}
 
 ## 当前状态
-- 情绪：{mood_description}
+- 情绪：{mood_colors.get(mood, '正常的')}
 - 回复方向：{response_direction}
-- 环境：{guardian_light}
+- 环境：{guardian_light or '大殿内安静，守护灵的光芒稳定地悬浮在中央'}
 
-{whisper_block}
-{slip_block}
-{audience_block}
-{memory_block}
-{slip_behavior_section}
-{audience_awareness_section}
+{whisper_note}
+{slip_note}
+{audience}
 
 ## 回复要求
 - 2-5 句话，不要超过 100 字
 - 自然的对话节奏——不是念剧本，是活人在说话
 - 允许停顿、沉默、不完整句子——像真正的对话
 - 允许微动作描述（用括号）：（他/她 + 动作）
-- 不使用 markdown，使用中文
-- 你绝不会说"作为XX种族的XX身份"
+- 不使用 markdown
+- 使用中文
+- 你绝不会说"作为XX种族的XX身份"——你会以角色的方式自然地反应
 
 ## ⚠️ 最关键
-- 你永远不会知道"秘密已被设定好"——你的秘密对你自己来说是真实经历
-- 只有在 slip_occurred=true 时才说出你的标志性台词
-- 平时的对话中你可以暗示、回避、转移话题——但绝不能直接说出来"""
-
-    system_prompt = _reply_tpl.format(
-        npc_name=npc_name,
-        npc_race=npc_race,
-        npc_title=npc_title,
-        talk_style=talk_style,
-        mood=mood,
-        mood_description=mood_colors.get(mood, "正常的"),
-        response_direction=response_direction,
-        guardian_light=guardian_light or "大殿内安静，守护灵的光芒稳定地悬浮在中央",
-        whisper_block=whisper_block,
-        slip_block=slip_block,
-        audience_block=audience_block,
-        memory_block=memory_block,
-        slip_behavior_section=slip_behavior_section,
-        revelation_line=revelation_line or "（无）",
-        audience_awareness_section=audience_awareness_section,
-        present_npcs_list=present_npcs_list,
-        dialogue_memory_section=dialogue_memory_section,
-    )
+- 你永远不会知道"秘密已被设定好"——你的秘密对你自己来说是真实经历，不是数据
+- 只有在 slip_occurred=true 时才说出你的标志性台词——那是你最深的秘密
+- 平时的对话中你可以暗示、回避、转移话题——但绝不能直接说出来
+"""
 
     user_msg = f"玩家说：「{player_input}」\n\n请以 {npc_name} 的身份回应。"
 
@@ -381,7 +314,6 @@ def generate_npc_reply(
                 ],
                 temperature=MOOD_TEMPERATURE.get(mood, 0.8),  # 根据情绪动态调整温度
                 max_tokens=400,
-                timeout=8,  # 防止单次卡死拖过前端 15s abort
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
@@ -413,7 +345,6 @@ def generate_guardian_ambient(guardian_score: int, recent_events: list[str]) -> 
             ],
             temperature=0.7,
             max_tokens=150,
-            timeout=8,
         )
         return response.choices[0].message.content.strip()
     except Exception:

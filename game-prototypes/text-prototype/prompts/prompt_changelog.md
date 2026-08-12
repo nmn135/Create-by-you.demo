@@ -99,28 +99,6 @@
 
 ---
 
-## v3 — 2026-08-13
-
-### 修改范围
-- `config.py` — **模型名修复（关键 bug）**：废弃 `deepseek-v4-pro` / `deepseek-v4-flash`（非有效模型名，导致空响应/卡顿触发整条兜底链），统一改用官方 `deepseek-chat`
-- `ai_pipeline.py` — Prompt 改为从 `prompts/*.txt` 加载（单源真值）；回复生成改用 `reply_generator_v2.txt` 完整模板；所有 API 调用加 8s 超时
-- 实测：意图解析 ~1-4s、回复生成 ~1.3s（此前 doubao 负载高时 15-24s）
-
-### 一、意图解析
-- 代码不再内嵌长 prompt，直接加载 `intent_parser_v2.txt`（含 urgency/reasoning 输出、中文反问/反话/委婉识别、上下文感知、边界情况）
-- 兜底链统一用 `deepseek-chat` 重试 3 次（原先是 v4-pro → v4-flash 跨模型兜底）
-
-### 二、回复生成
-- 由内嵌精简 prompt → 加载 `reply_generator_v2.txt` 模板渲染，启用完整能力：
-  - **情绪→微反应映射**（calm/tense/angry/vulnerable/hopeful 各自的语言节奏+肢体+眼神+潜台词）
-  - **失言行为模式 A/B/C**（收回掩饰 / 沉默放弃 / 破罐破摔，按 NPC 性格与防御等级选择）
-  - **在场感知**（注意到其他 NPC 的微反应，话中涉密更隐晦）
-  - **对话记忆引用**（每 3-5 轮自然提及一次）
-- 渲染时剔除末尾「## 模板变量说明」段落（那是给 prompt 作者看的注释，不是给 LLM 的指令）
-- 所有请求加 `timeout=8`，防止拖过前端 15s abort
-
----
-
 ### 文件结构
 
 ```
