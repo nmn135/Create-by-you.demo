@@ -461,19 +461,31 @@ function drawNpc(n) {
   if (n.bubble) drawBubble(n);
 }
 
+let _bubbleRects = [];   // 本帧已画气泡区（防重叠）
 function drawBubble(n) {
   const text = n.bubble.text;
   const px = n.x;
   ctx.font = '8px "Courier New"';
-  const w = Math.min(120, ctx.measureText(text).width + 10);
+  // 截断到能装进气泡的宽度，避免文字溢出（中文 8px 约一字 8px）
+  let t = text;
+  const maxW = 120;
+  while (t.length > 1 && ctx.measureText(t).width + 10 > maxW) t = t.slice(0, -1);
+  if (t !== text) t = t.slice(0, -1) + '…';
+  const w = Math.min(maxW, ctx.measureText(t).width + 10);
   const bx = Math.max(2, Math.min(W - w - 2, px - w / 2));
-  const by = GROUND - 56;
-  ctx.fillStyle = 'rgba(10,10,18,0.9)';
+  // 防重叠：若与已画气泡相交则往上叠一层（限顶部 2px 以上）
+  let by = GROUND - 56;
+  for (const r of _bubbleRects) {
+    if (bx < r.bx + r.w && bx + w > r.bx && by < r.by + r.h && by + 16 > r.by) by = r.by - 18;
+  }
+  by = Math.max(2, by);
+  _bubbleRects.push({ bx, by, w, h: 16 });
+  ctx.fillStyle = 'rgba(10,10,18,0.94)';
   ctx.fillRect(bx, by, w, 16);
-  ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
+  ctx.strokeStyle = '#777'; ctx.lineWidth = 1;
   ctx.strokeRect(bx, by, w, 16);
-  ctx.fillStyle = '#d8d8d8';
-  ctx.fillText(text, bx + 5, by + 12);
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fillText(t, bx + 5, by + 12);
 }
 
 function drawHint() {
@@ -595,6 +607,7 @@ function drawScene() {
   if (sc.draw && !artReady) sc.draw();                          // 场景专属元素（有正式图则跳过）
   if (world.bellStruck || bell.active) drawBell();
   if (world.doorVisible) drawDoor();
+  _bubbleRects = [];
   for (const id of Object.keys(npcs)) drawNpc(npcs[id]);
   drawPlayer();
   if (state === 'explore' && nearestNpc()) drawHint();
@@ -629,8 +642,8 @@ function tickGossip(dt) {
     const na = npcs[ids[a]], nb = npcs[ids[b]];
     const key = ids[a] + '|' + ids[b];
     const dist = Math.abs(na.x - nb.x);
-    const gossipT = world.scene === 'day2' ? 1.1 : 2.2;   // 第二天：流言传得更快
-    if (dist < 34 && !na.bubble && !nb.bubble) {
+    const gossipT = world.scene === 'day2' ? 1.0 : 1.8;   // 第二天：流言传得更快
+    if (dist < 36 && !na.bubble && !nb.bubble) {
       coLoc[key] = (coLoc[key] || 0) + dt;
       if (coLoc[key] > gossipT) { coLoc[key] = -4; doGossip(na, nb); }
     } else if (dist >= 34) { coLoc[key] = 0; }
@@ -643,12 +656,12 @@ function doGossip(a, b) {
   }
   // 没有共享事实 → 氛围闲聊
   const ambient = {
-    mayor: ['（清了清嗓子）第七天，一切如常。', '（整了整怀表链）秩序，就是一切。'],
+    mayor: ['（清了清嗓子）第七天，一切如常。', '（整了整怀表链）秩序，就是一切。', '（望向钟楼）这钟走得再准，也拦不住时辰。'],
     pawn: ['（拨了拨算盘）没有东西比话更值钱。', '（眯眼）进来就是客，您要当点什么？', '（低声）捂在怀里的秘密一文不值，说出去的才有人出价。'],
-    bard: ['（哼着不成调的歌）城里没有第八天…', '（笑着看空气）听得懂的人，还没来。'],
+    bard: ['（哼着不成调的歌）城里没有第八天…', '（笑着看空气）听得懂的人，还没来。', '（用指节轻叩桌沿）第七天……说来话长。'],
   };
   const pool = ambient[a.id] || [];
-  if (Math.random() < 0.6) a.bubble = { text: pool[Math.floor(Math.random() * pool.length)], ttl: 2.4 };
+  if (Math.random() < 0.75) a.bubble = { text: pool[Math.floor(Math.random() * pool.length)], ttl: 3.0 };
 }
 function spreadFact(f, n) {
   f.knownBy.add(n.id);

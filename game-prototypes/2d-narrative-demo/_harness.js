@@ -231,6 +231,30 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
   // 12. tickGossip/doGossip 不炸
   run('tickNpcs/tickGossip 帧循环', () => { for (let i = 0; i < 5; i++) frame(); });
 
+  // 13. 气泡超长文字被截断（不溢出）
+  run('气泡超长文字被截断', () => {
+    const LONG = '这是一句非常非常非常非常非常非常非常非常长的闲聊话用来测试气泡截断';
+    G.npcs.bard.bubble = { text: LONG, ttl: 3 };
+    G.debugSetPos('bard', 150);
+    ctx2d._calls.length = 0;
+    frame();
+    const texts = ctx2d._calls.filter(c => c[0] === 'fillText').map(c => String(c[1][0]));
+    const t = texts.find(x => /…/.test(x));
+    if (!t) throw new Error('未见截断省略号，texts=' + JSON.stringify(texts));
+    if (t.length >= LONG.length) throw new Error('未截短');
+  });
+
+  // 14. 相邻气泡上下分层不重叠
+  run('相邻气泡上下分层不重叠', () => {
+    G.npcs.pawn.bubble = { text: '泡一', ttl: 3 };
+    G.npcs.bard.bubble = { text: '泡二', ttl: 3 };
+    G.debugSetPos('pawn', 150); G.debugSetPos('bard', 156);
+    ctx2d._calls.length = 0;
+    frame();
+    const bubbleYs = ctx2d._calls.filter(c => c[0] === 'fillText').map(c => c[1][2]).filter(y => y >= 90 && y <= 122);
+    if (new Set(bubbleYs).size < 2) throw new Error('气泡未分层，ys=' + JSON.stringify([...new Set(bubbleYs)]));
+  });
+
   console.log('\n========== 结果 ==========');
   if (results.ok) { console.log('全部通过 ✓'); process.exit(0); }
   else { console.error(JSON.stringify(results.errors, null, 2)); process.exit(1); }
