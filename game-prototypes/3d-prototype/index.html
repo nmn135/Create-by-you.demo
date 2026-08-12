@@ -3814,6 +3814,9 @@ import { AmbientAudio } from './src/audio.js';
       // --- 浮雕发光微呼吸 ---
       relief.material.emissiveIntensity = 0.45 + Math.sin(elapsed * 1.2) * 0.12;
 
+      // --- 尘埃粒子（烛光漂浮） ---
+      if (window.__atmosphere && window.__atmosphere.update) window.__atmosphere.update(dt);
+
       // --- 光束粒子动画 ---
       const posArr = beamParticlesGeo.attributes.position.array;
       const spds = beamParticlesGeo.userData.speeds;
@@ -4011,6 +4014,15 @@ import { AmbientAudio } from './src/audio.js';
       }
 
       modelManager.update(dt);
+
+      // 几何人形待机呼吸（Mixamo 模型未加载时的兜底人形，轻微起伏避免呆立）
+      for (const _k of Object.keys(npcMeshes)) {
+        const _e = npcMeshes[_k];
+        if (!_e || _e.modelLoaded || !_e.group || !_e.group.visible) continue;
+        const _s = 1 + Math.sin(elapsed * 1.3 + _k.length) * 0.018;
+        _e.group.scale.set(1, _s, 1);
+      }
+
       // NPC subtle wandering (lerp within home area)
       for (const k of Object.keys(npcMeshes)) {
         const e = npcMeshes[k];
@@ -4532,8 +4544,8 @@ import { AmbientAudio } from './src/audio.js';
     document.getElementById('loading').classList.add('hidden');
     }, 600);
 
-    // 场景氛围（暖光 + 墙面装饰 + 地面细节）——放在所有声明之后避免 TDZ
-    new Atmosphere({ THREE, scene, HALL, wallThick, wallHeight });
+    // 场景氛围（暖光 + 墙面装饰 + 地面细节 + 尘埃粒子）——放在所有声明之后避免 TDZ
+    window.__atmosphere = new Atmosphere({ THREE, scene, HALL, wallThick, wallHeight });
 
     // 场景道具加载器（Poly Haven 家具 FBX，替换部分程序化几何体）
     new Props({ THREE, FBXLoader, scene });
