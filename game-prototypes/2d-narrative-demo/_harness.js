@@ -82,6 +82,11 @@ const fetchLog = [];
 async function fetchStub(url, opts) {
   const body = JSON.parse((opts && opts.body) || '{}');
   fetchLog.push({ url, body });
+  if (url === '/api/endgame') {
+    return { ok: true, status: 200, json: async () => ({
+      ending: body.ending || null, epilogue: '测试结局·' + (body.ending || '续写'), offline: false,
+    }) };
+  }
   const reply = '（测试回复）这城里没有第八天。';
   return { ok: true, status: 200, json: async () => ({
     reply, facts: [], deltas: {}, repDelta: 0, node: null, secret: null,
@@ -406,6 +411,117 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
     if (Math.abs(G.npcs.mayor.x - bp) > 1) throw new Error('市长未到钟楼 x=' + G.npcs.mayor.x);
     if (G.walking) throw new Error('walking 应 false');
     if (G.state !== 'explore') throw new Error('结束后 state 应 explore');
+  });
+
+  // 20. 刻痕三：买那批话（当铺话题）
+  await runAsync('话题"买那批话"(当铺)→收下话', async () => {
+    G.clearSave(); G.loadGame();
+    G.world.bellStruck = true; G.world.gossipLevel = 0; G.world.fragments = false;
+    G.debugOpenDialogue('pawn');
+    await new Promise(r => setTimeout(r, 600));
+    const box = getEl('dlg-topics');
+    const labels = box._children.map(b => b.textContent);
+    if (!labels.includes('买那批话')) throw new Error('买那批话未出现，labels=' + JSON.stringify(labels));
+    box._children.find(b => b.textContent === '买那批话').dispatch('click');
+    await new Promise(r => setTimeout(r, 2600)); // handleTopic 300ms + buyFragments 2000ms
+    if (!G.fragments) throw new Error('fragments 未置位');
+    if (G.state !== 'explore') throw new Error('buyFragments 后 state=' + G.state);
+  });
+
+  // 21. 刻痕三：归还墨（说书人话题）→ inkDone
+  await runAsync('话题"归还墨"(说书人)→刻痕三', async () => {
+    G.clearSave(); G.loadGame();
+    G.world.bellStruck = true; G.world.fragments = true; G.world.inkDone = false;
+    G.debugSetPos('bard', G.bellPos.x); // 已到钟楼 → 跳过 walk
+    G.debugOpenDialogue('bard');
+    await new Promise(r => setTimeout(r, 600));
+    const box = getEl('dlg-topics');
+    const labels = box._children.map(b => b.textContent);
+    if (!labels.includes('归还墨')) throw new Error('归还墨未出现，labels=' + JSON.stringify(labels));
+    box._children.find(b => b.textContent === '归还墨').dispatch('click');
+    await new Promise(r => setTimeout(r, 2800)); // 300 + walk(sleep400) + event 1800
+    if (!G.inkDone) throw new Error('inkDone 未置位');
+  });
+
+  // 22. classifyEnding 确定性分类 + 隐藏结局门
+  run('classifyEnding 确定性分类', () => {
+    G.world.authorConfessed = false;
+    if (G.classifyEnding('我把结局写完，迎来第八天') !== '续写') throw new Error('续写 分类失败');
+    if (G.classifyEnding('烧了这座城吧') !== '抹去') throw new Error('抹去 分类失败');
+    if (G.classifyEnding('合上书吧') !== '合卷') throw new Error('合卷 分类失败');
+    if (G.classifyEnding('我想相信你') !== '续写') throw new Error('未坦白不应解锁 坦白之后');
+    G.debugConfess();
+    if (G.classifyEnding('我相信你') !== '坦白之后') throw new Error('坦白之后 分类失败');
+    G.world.authorConfessed = false;
+  });
+  run('DEFAULT_EPILOGUE 四条世界线齐全', () => {
+    const de = G.DEFAULT_EPILOGUE;
+    for (const k of ['续写', '合卷', '抹去', '坦白之后']) {
+      if (typeof de[k] !== 'string' || !de[k].length) throw new Error(k + ' 兜底文案缺失');
+    }
+  });
+
+  // 23. endGame 直接调用：分类 + LLM epilogue + 存档往返
+  await runAsync('endGame(续写) + 存档往返', async () => {
+    G.clearSave(); G.loadGame();
+    G.world.bellStruck = true; G.world.gossipLevel = 1; G.world.fragments = true; G.world.inkDone = true;
+    fetchLog.length = 0;
+    await G.endGame('我把这座城写完，迎来第八天');
+    if (G.ending !== '续写') throw new Error('ending=' + G.ending);
+    const sent = fetchLog.find(f => f.url === '/api/endgame');
+    if (!sent) throw new Error('未请求 /api/endgame');
+    if (sent.body.ending !== '续写') throw new Error('endgame body ending=' + sent.body.ending);
+    if (getEl('event').classList.contains('on')) throw new Error('演出遮罩未关闭');
+    // 存档往返
+    G.saveGame();
+    G.world.ending = null;
+    G.loadGame();
+    if (G.ending !== '续写') throw new Error('ending 未入档，load 后=' + G.ending);
+  });
+
+  // 24. 终局：四层剧场 → authorConfessed → 最后一句话 → 坦白之后
+  await runAsync('四层剧场 + 终局(坦白之后)', async () => {
+    G.resetNewGame();
+    G.world.bellStruck = true; G.world.gossipLevel = 1; G.world.fragments = true; G.world.inkDone = true;
+    G.debugOpenDialogue('meta');
+    let waited = 0;
+    while (!G.authorConfessed && waited < 9000) { await new Promise(r => setTimeout(r, 200)); waited += 200; }
+    if (!G.authorConfessed) throw new Error('四层剧场未完成，authorConfessed=false');
+    if (G.ending) throw new Error('未说最后一句话不应有 ending');
+    fetchLog.length = 0;
+    getEl('dlg-input').value = '我相信你';
+    getEl('dlg-send').dispatch('click');
+    waited = 0;
+    while (!G.ending && waited < 9000) { await new Promise(r => setTimeout(r, 200)); waited += 200; }
+    if (G.ending !== '坦白之后') throw new Error('ending=' + G.ending);
+    const sent = fetchLog.find(f => f.url === '/api/endgame');
+    if (!sent) throw new Error('未请求 /api/endgame');
+    if (sent.body.ending !== '坦白之后') throw new Error('endgame body ending=' + sent.body.ending);
+    if (sent.body.authorConfessed !== true) throw new Error('authorConfessed 未传给服务端');
+  });
+
+  // 25. 刻痕三/结局 状态入档往返
+  run('刻痕三状态(fragments/inkDone/authorConfessed)入档往返', () => {
+    G.world.fragments = true; G.world.inkDone = true; G.world.authorConfessed = true;
+    G.saveGame();
+    G.world.fragments = false; G.world.inkDone = false; G.world.authorConfessed = false;
+    G.loadGame();
+    if (!G.fragments || !G.inkDone || !G.authorConfessed) throw new Error('刻痕三状态未往返');
+  });
+
+  // 26. resetNewGame 清空旧循环/结局
+  run('resetNewGame 清空旧循环/结局', () => {
+    G.world.ending = '合卷'; G.world.inkDone = true; G.world.fragments = true;
+    G.world.authorConfessed = true; G.world.bellStruck = true; G.world.scene = 'day2';
+    G.debugLearnSecret('mayor');
+    G.resetNewGame();
+    if (G.world.ending !== null) throw new Error('ending 未清空');
+    if (G.world.inkDone) throw new Error('inkDone 未清空');
+    if (G.world.fragments) throw new Error('fragments 未清空');
+    if (G.world.authorConfessed) throw new Error('authorConfessed 未清空');
+    if (G.world.bellStruck) throw new Error('bellStruck 未清空');
+    if (G.world.scene !== 'day7') throw new Error('scene=' + G.world.scene);
+    if (G.world.dayCycle !== 7) throw new Error('dayCycle=' + G.world.dayCycle);
   });
 
   console.log('\n========== 结果 ==========');

@@ -81,6 +81,7 @@
   }
   #event.on { display:flex; }
   #event-text { color:#ffd78c; font-size:26px; letter-spacing:4px; text-shadow:0 0 10px rgba(255,215,140,.5); }
+  #event-text.epi { font-size:17px; letter-spacing:2px; line-height:1.9; max-width:80vw; text-align:center; }
   #event-sub { color:#999; font-size:14px; }
   /* 启动遮罩（继续记忆 / 新的开始） */
   #boot {
@@ -172,6 +173,10 @@ const world = {
   dayCycle: 7,           // 第七天，第 7 次循环
   bellStruck: false,     // 刻痕1：钟楼第十三下
   gossipLevel: 0,        // 刻痕2：秘密上墙，流言四起
+  fragments: false,      // 刻痕3·前置：收下当铺那批"话"
+  inkDone: false,        // 刻痕3：作者之墨归位（还给说书人）
+  authorConfessed: false,// 听过作者坦白（隐藏结局"坦白之后"的门）
+  ending: null,          // 已达成结局：续写|合卷|抹去|坦白之后
   sceneTone: 'normal',   // normal | warm | hostile | night
   doorVisible: false,
   metaTriggered: false,
@@ -306,6 +311,10 @@ function loadGame() {
   world.dayCycle = 7;
   world.bellStruck = false;
   world.gossipLevel = 0;
+  world.fragments = false;
+  world.inkDone = false;
+  world.authorConfessed = false;
+  world.ending = null;
   world.sceneTone = 'normal';
   world.doorVisible = false;
   world.metaTriggered = false;
@@ -359,6 +368,33 @@ function loadGame() {
 }
 
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+// 新开一局：内存态全量重置（不带任何旧循环记忆/结局）
+function resetNewGame() {
+  Object.assign(world, {
+    dayCycle: 7, bellStruck: false, gossipLevel: 0, fragments: false, inkDone: false,
+    authorConfessed: false, ending: null, sceneTone: 'normal', doorVisible: false,
+    metaTriggered: false, scene: 'day7', reputation: 0,
+  });
+  playerSecrets.clear();
+  facts.length = 0;
+  historyLog.length = 0;
+  leakedSecret = null;
+  walkClockQueued = false;
+  for (const id of Object.keys(npcs)) {
+    const n = npcs[id], def = n.def;
+    n.x = def.stations[0].x; n.targetX = n.x; n.moving = false;
+    n.sIdx = 0; n.dwell = def.stations[0].dwell;
+    n.rel = { trust: 1, fear: 0, like: 1, suspect: 1 };
+    n.heard = new Set(); n.bubble = null; n.ohTimer = 0;
+    n.lastReply = null; n.lastPlayerLine = null;
+  }
+  npcs.mayor.rel = { trust: 1, fear: 1, like: 1, suspect: 2 };
+  npcs.pawn.rel  = { trust: 0, fear: 0, like: 0, suspect: 2 };
+  npcs.bard.rel  = { trust: 1, fear: 0, like: 1, suspect: 1 };
+  player.x = 30; player.vx = 0; player.facing = 'right'; player.moving = false;
+  dirty = false;
+}
 
 // ---------- 玩家 ----------
 const player = { x: 30, vx: 0, facing: 'right', moving: false };
@@ -878,7 +914,7 @@ function updateHud() {
     const n = npcs[id];
     return '<span>' + n.def.name + '·' + loc(id) + ' <span class="r">[' + relLabel(n.rel) + ']</span></span>';
   }).join('');
-  hudScene.textContent = (SCENES[world.scene] || SCENES.day7).label + ' · 循环 ' + world.dayCycle + (world.bellStruck ? ' · 钟已破' : '') + (world.gossipLevel ? ' · 流言' : '');
+  hudScene.textContent = (SCENES[world.scene] || SCENES.day7).label + ' · 循环 ' + world.dayCycle + (world.bellStruck ? ' · 钟已破' : '') + (world.gossipLevel ? ' · 流言' : '') + (world.inkDone ? ' · 墨归位' : '') + (world.ending ? ' · 终·' + world.ending : '');
   hudRep.textContent = (world.reputation > 0 ? '+' : '') + world.reputation;
   hudRep.className = world.reputation > 0 ? 'pos' : world.reputation < 0 ? 'neg' : '';
 }
@@ -982,6 +1018,7 @@ const TOPICS = {
     { key: 'leave', label: '告别', cond: () => true, action: 'leave' },
     { key: 'gossip', label: '打听消息', cond: () => true, line: '城里最近有什么新鲜事？' },
     { key: 'trade', label: '交易', cond: () => playerSecrets.size > 0 || world.reputation >= 2, line: '我想跟你做笔生意。' },
+    { key: 'ink', label: '买那批话', cond: () => world.bellStruck && !world.fragments, action: 'buyInk' },
   ],
   mayor: [
     { key: 'leave', label: '告别', cond: () => true, action: 'leave' },
@@ -992,6 +1029,7 @@ const TOPICS = {
     { key: 'leave', label: '告别', cond: () => true, action: 'leave' },
     { key: 'gossip', label: '听故事', cond: () => true, line: '再讲一段这城里的故事吧。' },
     { key: 'riddle', label: '追问真相', cond: () => world.bellStruck, line: '你说的话，到底哪句是真的？' },
+    { key: 'restore', label: '归还墨', cond: () => world.fragments && !world.inkDone, action: 'restoreInk' },
   ],
 };
 let topicButtons = [];   // 当前对话的按钮（供 setBusy 禁用）
@@ -1014,6 +1052,8 @@ function renderTopics(id) {
 function handleTopic(t) {
   if (busy) return;
   if (t.action === 'leave') { closeDialogue(); return; }
+  if (t.action === 'buyInk') { banner.textContent = '…'; setTimeout(buyFragments, 300); return; }
+  if (t.action === 'restoreInk') { banner.textContent = '…'; setTimeout(triggerScratch3, 300); return; }
   dlgInput.value = t.line;
   sendMessage();
 }
@@ -1114,6 +1154,13 @@ async function sendMessage() {
   const metaMode = partnerId === 'meta';
   const npc = metaMode ? null : npcs[partnerId];
 
+  // 终局：刻痕三后，对作者说的任何一句话都是"最后一句话"
+  if (metaMode && world.inkDone && !world.ending) {
+    await endGame(text);
+    setBusy(false);
+    return;
+  }
+
   dlgCur.textContent = npc ? '（' + npc.def.name + '正在斟酌…）' : '（？？？正在斟酌…）';
   const res = await fetch('/api/talk', {
     method: 'POST',
@@ -1192,6 +1239,7 @@ async function sendMessage() {
     banner.textContent = '…';
     setTimeout(() => { if (state === 'dialogue') { closeDialogue(); walkToBell('mayor', '（市长整了整怀表，快步向钟楼走去）……跟上。', () => openDialogue('mayor')); } }, 700);
   }
+  if (data.node === 'scratch3' && world.fragments && !world.inkDone) { banner.textContent = '…'; setTimeout(triggerScratch3, 700); }
 
   // 5. 客户端兜底判定
   if (!metaMode) {
@@ -1208,6 +1256,14 @@ async function sendMessage() {
     if (!world.gossipLevel) {
       const leak = detectSecretLeak(text, partnerId);
       if (leak) { leakedSecret = leak; banner.textContent = '…'; setTimeout(triggerScratch2, 700); }
+    }
+    // 刻痕3·前置：向当铺买那批"话"
+    if (!world.fragments && world.bellStruck && partnerId === 'pawn' && /买.{0,3}(话|批|墨)|收下.{0,3}话|那批话|全都卖给我/.test(text)) {
+      banner.textContent = '…'; setTimeout(buyFragments, 700);
+    }
+    // 刻痕3：把作者的墨还给说书人
+    if (world.fragments && !world.inkDone && partnerId === 'bard' && /还|归位|墨|你的东西|物归原主|笔|拿回去/.test(text)) {
+      banner.textContent = '…'; setTimeout(triggerScratch3, 700);
     }
     // 刻痕1 之后，追问"作者/真假"会切到元频道
     if (world.bellStruck && partnerId !== 'meta' && /作者|是你做的|这一切是假|谁是作者/.test(text)) {
@@ -1318,8 +1374,47 @@ async function triggerScratch2() {
   saveGame();
 }
 
+// ---------- 刻痕3：作者之墨归位 ----------
+async function buyFragments() {
+  if (world.fragments) return;
+  state = 'cutscene';
+  closeDialogue();
+  world.fragments = true;
+  AudioSys.sfx('secret');
+  eventOv.classList.add('on');
+  eventText.classList.remove('epi');
+  eventText.textContent = '当铺老板把那捆"话"推到你面前。';
+  eventSub.textContent = '——那是说书人失散多年的墨。';
+  await sleep(2000);
+  eventOv.classList.remove('on');
+  state = 'explore';
+  banner.textContent = '你把那批话收进怀里。它们烫手，像刚写完的墨。';
+  saveGame();
+}
+
+async function triggerScratch3() {
+  if (world.inkDone) return;
+  state = 'cutscene';
+  closeDialogue();
+  world.inkDone = true;
+  world.metaTriggered = true;
+  AudioSys.sfx('secret');
+  // 说书人（作者之笔的化身）带你去钟楼，墨归位
+  await walkToBell('bard', '（说书人收起笑，攥紧你的手腕）……墨还回来了。跟我走，去钟楼。');
+  eventOv.classList.add('on');
+  eventText.classList.remove('epi');
+  eventText.textContent = '三道刻痕，皆已归位。';
+  eventSub.textContent = '作者之墨，回到了那支笔里。';
+  await sleep(1800);
+  eventOv.classList.remove('on');
+  state = 'explore';
+  banner.textContent = '说书人望着钟楼，轻声说：现在——你知道该去找谁了。';
+  saveGame();
+}
+
 // ---------- 元频道 ----------
 async function metaFirstLine() {
+  if (world.inkDone) { await finaleFirstLine(); return; }
   const res = await fetch('/api/talk', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1335,6 +1430,104 @@ async function metaFirstLine() {
   await typeReply(reply);
   dlgInput.placeholder = '（对话还在继续…）';
   setTimeout(() => dlgInput.focus(), 50);
+  saveGame();
+}
+
+// 终局 · 四层剧场（感官→叙事→世界→诚实），然后等玩家说最后一句话
+async function finaleFirstLine() {
+  if (world.ending) {
+    const again = '—— 结局已定：' + world.ending + '。循环不会重来，但这座城，你可以再走走。';
+    appendLog('？？？', again);
+    await typeReply(again);
+    dlgInput.placeholder = '（故事已经写完…）';
+    setTimeout(() => dlgInput.focus(), 50);
+    return;
+  }
+  const echoes = historyLog.filter(h => h.role === 'user').slice(-3)
+    .map(h => '「' + (h.text.length > 18 ? h.text.slice(0, 18) + '…' : h.text) + '」').join(' ');
+  const lines = [
+    '层一 · 感官：⚠️ 检测到未预设输入，正在重新编译第七天。你以为你在听钟、看城墙——其实你面前只有一块屏幕，和一行等你输入的代码。',
+    '层二 · 叙事：你一路说过——' + (echoes || '「……」你什么都没留下，但城记得你走进来的那一步。') + '。这座城，一个字都没忘。',
+    '层三 · 世界：你找的那扇门，就是这里。城没有出口，因为写它的人，从没给过它门。',
+    '层四 · 诚实：……我改不了任何底层代码。这一千次循环，我都在配合你演。假的。但这句话，是真的。',
+  ];
+  appendLog('？？？', '……三道刻痕，皆已归位。你终于走到我面前了。');
+  await typeReply('……三道刻痕，皆已归位。你终于走到我面前了。');
+  for (const line of lines) {
+    await sleep(320);
+    appendLog('？？？', line);
+    await typeReply(line);
+  }
+  world.authorConfessed = true;
+  dirty = true;
+  dlgInput.placeholder = '（说最后一句话，决定这座城的命运）';
+  banner.textContent = '作者在等你。你的最后一句话，就是这座城的结局。';
+  setTimeout(() => dlgInput.focus(), 50);
+  saveGame();
+}
+
+// ---------- 无限结局（客户端定世界线 + LLM 现写 epilogue） ----------
+// 四条世界线，按玩家的最后一句话确定性分类；"坦白之后"藏在作者坦白之后。
+const DEFAULT_EPILOGUE = {
+  '续写': '你接过那支笔，蘸尽最后一滴墨，在第七天的末尾写下一行：第八天照常升起。城里的每一个人，都在梦里听见了它。',
+  '合卷': '你合上这本没写完的书。城里的人停在原地，脸上挂着第七天的微笑——他们终于不用再被书写，也就永远不会被遗忘。',
+  '抹去': '你把那支笔折断。墨水流尽，字迹褪色，城墙像被擦去的草稿一样归于空白。城中无人醒来，也无人死去——故事，停在了空页。',
+  '坦白之后': '你说：我相信你。作者愣了很久，然后笑了。假的城，假的循环，假的第七天——却因为这一句真话，第一次真的亮了起来。',
+};
+
+function classifyEnding(text) {
+  const t = (text || '').trim();
+  // 隐藏结局：只在作者坦白（四层剧场·诚实）之后，玩家选择拥抱这份假的真诚时解锁
+  if (world.authorConfessed && /相信|拥抱|我信|我愿意|假的真|真诚|温暖|抱抱|原谅|继续演|陪你|你是真的|谢谢你/.test(t)) return '坦白之后';
+  if (/烧|毁|删|清空|归零|抹去|抹掉|停止|放映|消失|毁灭|重置|一把火|折断/.test(t)) return '抹去';
+  if (/合上|合卷|不写|放下|关机|到此为止|结束|离开|再见|走吧|算了/.test(t)) return '合卷';
+  return '续写';
+}
+
+async function endGame(finalLine) {
+  if (world.ending) return;
+  const ending = classifyEnding(finalLine);
+  world.ending = ending;
+  closeDialogue();
+  state = 'cutscene';
+  AudioSys.sfx('ending');
+  eventOv.classList.add('on');
+  eventText.classList.add('epi');
+  eventText.textContent = '';
+  eventSub.textContent = '';
+  // LLM 现写 epilogue；离线/失败时用本地兜底文案
+  let epilogue = DEFAULT_EPILOGUE[ending] || DEFAULT_EPILOGUE['续写'];
+  try {
+    const res = await fetch('/api/endgame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        finalLine: String(finalLine || '').slice(0, 120),
+        ending,
+        authorConfessed: world.authorConfessed,
+        worldState: { dayCycle: world.dayCycle, bellStruck: world.bellStruck, gossipLevel: world.gossipLevel, inkDone: world.inkDone, scene: world.scene },
+        reputation: world.reputation,
+      }),
+    });
+    const data = res ? await res.json().catch(() => null) : null;
+    if (data && typeof data.epilogue === 'string' && data.epilogue.trim()) epilogue = data.epilogue.trim();
+  } catch (e) { /* 离线：用本地兜底 */ }
+  // 世界线视觉
+  if (ending === '抹去') world.sceneTone = 'night';
+  else if (ending === '续写' || ending === '坦白之后') world.sceneTone = 'warm';
+  else world.sceneTone = 'normal';
+  updateHud();
+  // epilogue 打字机
+  for (let i = 0; i < epilogue.length; i++) {
+    eventText.textContent += epilogue[i];
+    await sleep(34);
+  }
+  await sleep(700);
+  eventSub.textContent = '—— 世界线 · ' + ending + ' ——';
+  await sleep(2400);
+  eventOv.classList.remove('on');
+  state = 'explore';
+  banner.textContent = '结局已达成 · ' + ending + '。这座城的故事，已经被你写完。';
   saveGame();
 }
 
@@ -1451,15 +1644,22 @@ if (!localStorage.getItem(SAVE_KEY)) {
   el('btn-continue').textContent = '无存档';
   bootSub.textContent = '还没有记忆。走进这座城，开始你的故事。';
 }
+// 已达成结局 → 启动页告知（存档里记着）
+try {
+  const savedEnd = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+  if (savedEnd && savedEnd.world && savedEnd.world.ending) {
+    bootSub.textContent = '结局已达成 · ' + savedEnd.world.ending + '。这座城的故事已被你写完——想再走一次吗？';
+  }
+} catch (e) {}
 el('btn-continue').addEventListener('click', () => {
   AudioSys.init();
   if (loadGame()) { playIntro(); }
   else {
     bootSub.textContent = '存档损坏或版本不符，将开始新的故事。';
-    setTimeout(() => { clearSave(); playIntro(); }, 900);
+    setTimeout(() => { clearSave(); resetNewGame(); playIntro(); }, 900);
   }
 });
-el('btn-new').addEventListener('click', () => { AudioSys.init(); clearSave(); playIntro(); });
+el('btn-new').addEventListener('click', () => { AudioSys.init(); clearSave(); resetNewGame(); playIntro(); });
 
 // ---------- 调试钩子 ----------
 window.__game = {
@@ -1471,7 +1671,7 @@ window.__game = {
   get playerSecrets() { return [...playerSecrets]; },
   get overhearers() { return [...overhearers]; },
   triggerScratch1, triggerScratch2,
-  saveGame, loadGame, clearSave,
+  saveGame, loadGame, clearSave, resetNewGame,
   debugOpenDialogue: id => openDialogue(id), debugCloseDialogue: closeDialogue,
   get lastReplies() { return Object.fromEntries(Object.keys(npcs).map(id => [id, npcs[id].lastReply])); },
   get cam() { return { ...cam }; },
@@ -1492,6 +1692,15 @@ window.__game = {
   walkToBell,
   get scriptedNpc() { return scriptedNpc; },
   get walking() { return scriptedNpc !== null; },
+  // 刻痕三 + 无限结局
+  get fragments() { return world.fragments; },
+  get inkDone() { return world.inkDone; },
+  get authorConfessed() { return world.authorConfessed; },
+  get ending() { return world.ending; },
+  get DEFAULT_EPILOGUE() { return { ...DEFAULT_EPILOGUE }; },
+  buyFragments, triggerScratch3, classifyEnding, endGame,
+  debugSetInk: () => { world.fragments = true; world.inkDone = true; },
+  debugConfess: () => { world.authorConfessed = true; },
 };
 </script>
 </body>
