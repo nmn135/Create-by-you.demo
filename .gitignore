@@ -29,3 +29,8 @@ game-prototypes/package-lock.json
 shot_*.png
 view_*.png
 npc_*.png
+flame_*.png
+_b_*.png
+
+# 自动化对话测试产物（带时间戳，重复生成）
+scenario_results.json
