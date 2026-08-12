@@ -44,7 +44,7 @@
   }
   #dialogue.open { display:block; }
   #dlg-head { display:flex; align-items:center; gap:10px; border-bottom:1px solid #333; padding-bottom:6px; }
-  #dlg-avatar { width:30px; height:30px; border:1px solid #888; image-rendering:pixelated; }
+  #dlg-avatar { width:48px; height:48px; border:1px solid #888; image-rendering:pixelated; }
   #dlg-name { font-size:16px; color:#ffd78c; font-weight:bold; }
   #dlg-close { margin-left:auto; font-size:11px; color:#777; }
   #dlg-log { height:76px; overflow-y:auto; font-size:12px; color:#aaa; margin:6px 0; }
@@ -118,7 +118,7 @@
 
 <div id="dialogue">
   <div id="dlg-head">
-    <canvas id="dlg-avatar" width="30" height="30"></canvas>
+    <canvas id="dlg-avatar" width="48" height="48"></canvas>
     <span id="dlg-name"></span>
     <span id="dlg-close">ESC 离开</span>
   </div>
@@ -200,6 +200,15 @@ const NPC_DEFS = {
     sway: 0.18,
   },
 };
+
+// NPC 像素肖像（可选）：portrait_<id>.png 存在就自动使用，否则程序化绘制兜底
+const portraits = {};
+for (const pid of [...Object.keys(NPC_DEFS), 'meta']) {
+  const img = new Image();
+  img.src = 'portrait_' + pid + '.png';
+  portraits[pid] = img;
+}
+function portraitReady(id) { const i = portraits[id]; return !!(i && i.complete && i.naturalWidth > 0); }
 
 // 运行时 NPC 实例
 const npcs = {};
@@ -1170,25 +1179,71 @@ async function metaFirstLine() {
   saveGame();
 }
 
-// ---------- 头像 ----------
+// ---------- 头像（48×48 像素肖像，可被 portrait_<id>.png 覆盖） ----------
 function drawAvatarFor(id) {
   const c = av.getContext('2d');
   c.imageSmoothingEnabled = false;
+  if (portraitReady(id)) { c.drawImage(portraits[id], 0, 0, 48, 48); return; }
+  const px = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); };
   if (id === 'meta') {
-    c.fillStyle = '#111'; c.fillRect(0, 0, 30, 30);
-    c.fillStyle = '#eee'; c.fillRect(7, 8, 14, 12);
-    c.fillStyle = '#333'; c.fillRect(5, 5, 18, 5);
-    c.fillStyle = '#000'; c.fillRect(10, 12, 3, 3); c.fillRect(17, 12, 3, 3);
+    px(0, 0, 48, 48, '#111');
+    px(8, 4, 32, 12, '#222');                 // 兜帽
+    px(10, 12, 28, 26, '#1a1a1a');            // 黑影
+    px(14, 14, 20, 18, '#eee');               // 面具脸
+    px(9, 10, 30, 6, '#333');                 // 帽沿
+    px(17, 20, 3, 3, '#000'); px(28, 20, 3, 3, '#000');
+    px(20, 28, 8, 2, '#666');
     return;
   }
   const col = NPC_DEFS[id].colors;
-  c.fillStyle = col.robe; c.fillRect(0, 0, 30, 30);
-  c.fillStyle = col.skin; c.fillRect(7, 8, 14, 12);
-  c.fillStyle = col.hair; c.fillRect(5, 5, 18, 5);
-  c.fillStyle = '#1a1a1a'; c.fillRect(10, 12, 3, 3); c.fillRect(17, 12, 3, 3);
-  c.fillStyle = col.trim; c.fillRect(3, 22, 24, 3);
-  if (id === 'pawn') { c.fillStyle = '#8a5a2b'; c.fillRect(10, 10, 3, 1); c.fillRect(17, 10, 3, 1); }
-  if (id === 'bard') { c.fillStyle = '#F0F0F0'; c.fillRect(17, 8, 4, 12); c.fillStyle = '#e8c8b0'; c.fillRect(7, 8, 10, 12); }
+  px(0, 0, 48, 48, col.robe);                 // 底色
+  px(6, 36, 36, 12, col.robe);                // 肩膀
+  px(6, 34, 36, 3, col.trim);                 // 衣领
+  if (id === 'mayor') {
+    px(12, 0, 24, 9, col.robe2);              // 官帽冠
+    px(8, 8, 32, 3, col.trim);                // 官帽沿
+    px(22, 2, 4, 4, col.trim);                // 帽顶饰
+    px(14, 11, 20, 24, col.skin);             // 脸
+    px(16, 18, 7, 2, '#5a5a6a'); px(25, 18, 7, 2, '#5a5a6a');  // 眉
+    px(18, 22, 3, 3, '#1a1a1a'); px(27, 22, 3, 3, '#1a1a1a');  // 眼
+    px(22, 29, 4, 2, '#6a4a3a');              // 嘴
+    px(34, 22, 2, 12, col.trim);              // 怀表链
+    px(30, 32, 10, 8, '#C9A86A'); px(32, 33, 6, 5, '#eee');    // 怀表
+    return;
+  }
+  if (id === 'pawn') {
+    px(10, 5, 28, 7, col.hair);               // 头发
+    px(10, 5, 5, 15, col.hair); px(33, 5, 5, 15, col.hair);     // 鬓发
+    px(14, 11, 20, 25, col.skin);             // 脸
+    // 三副眼镜叠戴
+    px(15, 18, 6, 6, '#8a5a2b'); px(16, 19, 4, 4, '#e8e8e8');
+    px(27, 18, 6, 6, '#8a5a2b'); px(28, 19, 4, 4, '#e8e8e8');
+    px(21, 19, 6, 1, '#8a5a2b');
+    px(14, 24, 6, 6, '#8a5a2b'); px(15, 25, 4, 4, '#e8e8e8');
+    px(28, 24, 6, 6, '#8a5a2b'); px(29, 25, 4, 4, '#e8e8e8');
+    px(20, 25, 8, 1, '#8a5a2b');
+    px(16, 30, 6, 6, '#8a5a2b'); px(17, 31, 4, 4, '#e8e8e8');
+    px(26, 30, 6, 6, '#8a5a2b'); px(27, 31, 4, 4, '#e8e8e8');
+    px(22, 31, 4, 1, '#8a5a2b');
+    px(20, 36, 8, 2, col.hair);               // 胡茬
+    return;
+  }
+  if (id === 'bard') {
+    px(10, 3, 28, 6, col.hair);               // 头发
+    px(7, 7, 5, 5, col.hair); px(36, 7, 5, 5, col.hair);        // 乱发
+    px(14, 9, 12, 27, col.skin);              // 左脸
+    px(26, 9, 10, 27, '#F0F0F0');             // 右脸（涂白）
+    px(19, 16, 3, 3, '#1a1a1a'); px(29, 16, 3, 3, '#1a1a1a');   // 眼
+    px(31, 22, 2, 8, '#7fb0e8');              // 泪痕（白脸侧）
+    px(18, 28, 12, 3, '#8a2e2e');             // 笑嘴
+    px(16, 0, 16, 9, col.robe2); px(23, 7, 2, 2, col.trim);     // 尖帽+铃
+    return;
+  }
+  // 兜底（通用小人脸）
+  px(12, 6, 24, 7, col.hair);
+  px(14, 12, 20, 24, col.skin);
+  px(18, 20, 3, 3, '#1a1a1a'); px(27, 20, 3, 3, '#1a1a1a');
+  px(21, 29, 6, 2, '#6a4a3a');
 }
 
 // ---------- 启动遮罩（继续记忆 / 新的开始） ----------

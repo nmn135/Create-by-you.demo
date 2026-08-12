@@ -349,6 +349,25 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
     if (Math.abs(c2.y - 90) > 40) throw new Error('y 未回位 y=' + c2.y.toFixed(1));
   });
 
+  // 17. 像素肖像（48×48 程序化 + PNG 覆盖）
+  run('肖像程序化绘制(市长)', () => {
+    G.debugOpenDialogue('mayor');
+    const avc = getEl('dlg-avatar').getContext('2d');
+    if (!avc._calls.some(c => c[0] === 'fillRect')) throw new Error('程序化肖像无绘制');
+    G.debugCloseDialogue();
+  });
+  run('肖像 PNG 覆盖生效', () => {
+    const p = images.find(i => i._src === 'portrait_mayor.png');
+    if (!p) throw new Error('portrait_mayor.png 未预加载');
+    p.complete = true; p.naturalWidth = 48; p.naturalHeight = 48;
+    const avc = getEl('dlg-avatar').getContext('2d');
+    avc._calls.length = 0;
+    G.debugOpenDialogue('mayor');
+    if (!avc._calls.some(c => c[0] === 'drawImage')) throw new Error('PNG 覆盖未走 drawImage');
+    G.debugCloseDialogue();
+    p.complete = false; p.naturalWidth = 0;
+  });
+
   console.log('\n========== 结果 ==========');
   if (results.ok) { console.log('全部通过 ✓'); process.exit(0); }
   else { console.error(JSON.stringify(results.errors, null, 2)); process.exit(1); }
