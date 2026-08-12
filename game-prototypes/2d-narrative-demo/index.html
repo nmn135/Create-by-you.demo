@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>封印之殿 · 像素叙事 Demo</title>
+<title>封印之殿 · 第七天 · 像素叙事 Demo v2</title>
 <link rel="icon" href="data:,">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,11 +18,14 @@
   /* HUD */
   #hud {
     position:fixed; top:10px; left:50%; transform:translateX(-50%);
-    pointer-events:none; font-size:13px; letter-spacing:1px; z-index:5;
-    background:rgba(0,0,0,.55); padding:6px 14px; border:1px solid #444;
-    text-shadow:1px 1px 0 #000;
+    pointer-events:none; font-size:12px; letter-spacing:1px; z-index:5;
+    background:rgba(0,0,0,.6); padding:6px 14px; border:1px solid #444;
+    text-shadow:1px 1px 0 #000; text-align:center;
   }
   #hud b { color:#ffd78c; }
+  #hud-npcs { margin-top:4px; font-size:11px; color:#aaa; }
+  #hud-npcs span { margin:0 6px; }
+  #hud-npcs .r { color:#8fd0ff; }
   /* 底部操作提示 */
   #banner {
     position:fixed; bottom:8px; left:50%; transform:translateX(-50%);
@@ -38,7 +41,7 @@
   }
   #dialogue.open { display:block; }
   #dlg-head { display:flex; align-items:center; gap:10px; border-bottom:1px solid #333; padding-bottom:6px; }
-  #dlg-avatar { width:30px; height:30px; background:#3b6ea5; border:1px solid #888; image-rendering:pixelated; }
+  #dlg-avatar { width:30px; height:30px; border:1px solid #888; image-rendering:pixelated; }
   #dlg-name { font-size:16px; color:#ffd78c; font-weight:bold; }
   #dlg-close { margin-left:auto; font-size:11px; color:#777; }
   #dlg-log { height:76px; overflow-y:auto; font-size:12px; color:#aaa; margin:6px 0; }
@@ -59,40 +62,39 @@
   }
   #dlg-send:hover { background:#3a3a4a; }
   #dlg-send:disabled { color:#666; cursor:default; }
-  /* 终端 / 元模式 */
-  #terminal {
-    position:fixed; inset:0; background:#000; z-index:30; display:none;
-    padding:8vh 6vw; font-family:'Courier New',monospace; color:#33ff66;
-    font-size:18px; line-height:1.7; white-space:pre-wrap;
+  /* 演出遮罩（钟声 / 第二天） */
+  #event {
+    position:fixed; inset:0; background:rgba(0,0,0,.78); z-index:25;
+    display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px;
   }
-  #terminal.open { display:block; }
-  #flash {
-    position:fixed; inset:0; background:#fff; z-index:40; display:none; pointer-events:none;
-  }
-  #flash.on { display:block; }
+  #event.on { display:flex; }
+  #event-text { color:#ffd78c; font-size:26px; letter-spacing:4px; text-shadow:0 0 10px rgba(255,215,140,.5); }
+  #event-sub { color:#999; font-size:14px; }
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="game" width="320" height="180"></canvas></div>
-<div id="hud">场景：<b id="hud-scene">黄昏</b> &nbsp;|&nbsp; 老罗：<b id="hud-rel">中立</b></div>
-<div id="banner">← → 移动 &nbsp;·&nbsp; E 交谈 &nbsp;·&nbsp; 走近老罗试试</div>
+<div id="hud">
+  场景：<b id="hud-scene">第七天 · 循环 7</b>
+  <div id="hud-npcs"></div>
+</div>
+<div id="banner">《第七天》Demo v2 · ← → 移动 · E 交谈 · 走近任何一个人试试</div>
 
 <div id="dialogue">
   <div id="dlg-head">
     <canvas id="dlg-avatar" width="30" height="30"></canvas>
-    <span id="dlg-name">老罗</span>
+    <span id="dlg-name"></span>
     <span id="dlg-close">ESC 离开</span>
   </div>
   <div id="dlg-log"></div>
   <div id="dlg-current"></div>
   <div id="dlg-input-row">
-    <input id="dlg-input" maxlength="120" placeholder="输入你的话…（试试：把村子烧了 / 我相信你 / 你是谁 / 你在骗我）">
+    <input id="dlg-input" maxlength="120" placeholder="…">
     <button id="dlg-send">说</button>
   </div>
 </div>
 
-<div id="terminal"></div>
-<div id="flash"></div>
+<div id="event"><div id="event-text"></div><div id="event-sub"></div></div>
 
 <script>
 'use strict';
@@ -106,78 +108,259 @@ bg.src = 'bg.png';
 
 // ---------- 世界状态 ----------
 const world = {
-  reputation: 0,
+  dayCycle: 7,           // 第七天，第 7 次循环
+  bellStruck: false,     // 刻痕1：钟楼第十三下
+  gossipLevel: 0,        // 刻痕2：秘密上墙，流言四起
   sceneTone: 'normal',   // normal | warm | hostile | night
   doorVisible: false,
   metaTriggered: false,
 };
 
-// ---------- 玩家 & NPC ----------
-const player = { x: 60, vx: 0, facing: 'right', moving: false };
-const npc = { x: 215 };
-const AV = 70; // 移动速度（内部像素/秒）
+// ---------- NPC 定义 ----------
+const NPC_DEFS = {
+  mayor: {
+    name: '市长', title: '守钟人·市长', home: '钟楼',
+    colors: { robe:'#3E4A5A', robe2:'#2c3646', skin:'#e0c8b0', hair:'#8a8a9a', trim:'#C9A86A' },
+    stations: [ {x:52, dwell:10, label:'钟楼'}, {x:150, dwell:5, label:'广场'}, {x:208, dwell:7, label:'市政厅'} ],
+    sway: 0.05,
+  },
+  pawn: {
+    name: '当铺老板', title: '当铺老板', home: '柜台',
+    colors: { robe:'#6B5540', robe2:'#4e3d2c', skin:'#d8b090', hair:'#3a2a1a', trim:'#8a5a2b' },
+    stations: [ {x:250, dwell:18, label:'柜台'}, {x:272, dwell:4, label:'门口'} ],
+    sway: 0.12,
+  },
+  bard: {
+    name: '说书人', title: '说书人', home: '广场',
+    colors: { robe:'#5A4A7A', robe2:'#3f3352', skin:'#e8c8b0', hair:'#4a3a2a', trim:'#F0F0F0' },
+    stations: [ {x:150, dwell:8, label:'广场'}, {x:92, dwell:6, label:'酒馆'} ],
+    sway: 0.18,
+  },
+};
+
+// 运行时 NPC 实例
+const npcs = {};
+for (const id of Object.keys(NPC_DEFS)) {
+  const def = NPC_DEFS[id];
+  npcs[id] = {
+    id, def,
+    x: def.stations[0].x, targetX: def.stations[0].x,
+    moving: false, sIdx: 0, dwell: def.stations[0].dwell,
+    rel: { trust: 1, fear: 0, like: 1, suspect: 1 },  // 0低 1中 2高
+    heard: new Set(),     // 听过的玩家的话
+    ohTimer: 0,           // "!" 反馈倒计时
+    bubble: null,         // 闲聊气泡 {text, ttl}
+  };
+}
+// 初始关系（依据设定）
+npcs.mayor.rel = { trust: 1, fear: 1, like: 1, suspect: 2 };
+npcs.pawn.rel  = { trust: 0, fear: 0, like: 0, suspect: 2 };
+npcs.bard.rel  = { trust: 1, fear: 0, like: 1, suspect: 1 };
+
+// ---------- 事实 / 秘密 ----------
+const facts = [];         // {text, knownBy:Set<npcId>}，跨循环保留（话不会消失）
+function addFact(text, who) {
+  const f = { text, knownBy: new Set() };
+  for (const id of who) if (npcs[id]) f.knownBy.add(id);
+  facts.push(f);
+  return f;
+}
+const SECRETS = {
+  mayor: '市长藏起了能结束循环的第一道刻痕',
+  pawn: '当铺老板在囤积别人说过的话',
+  bard: '说书人是作者留下的那支笔的化身',
+};
+const SECRET_MARKERS = {
+  mayor: /刻痕|第一道|藏起/,
+  pawn: /囤积|话不会|东西会消失|囤话/,
+  bard: /笔|化身|碎片/,
+};
+const playerSecrets = new Set();   // 玩家已知的秘密
+const secretsKnownBy = {           // 各 NPC 已知的秘密
+  mayor: new Set(['mayor']),
+  pawn: new Set(['mayor', 'pawn']),
+  bard: new Set(['bard']),
+};
+
+// ---------- 玩家 ----------
+const player = { x: 30, vx: 0, facing: 'right', moving: false };
+const AV = 70;
 let t = 0;
 
 // ---------- 状态机 ----------
-let state = 'explore';        // explore | dialogue | meta
-let metaDialogue = false;     // 元模式下的对话
-let glitching = false;
-let glitchIntensity = 0;
+let state = 'explore';   // explore | dialogue | cutscene | meta
+let dialogNpc = null;    // 'mayor'|'pawn'|'bard'|'meta'
+let metaDialogue = false;
+let overhearers = [];    // 对话时旁听的 NPC
+const EARSHOT = 46;
+let leakedSecret = null; // 刻痕2 泄漏的秘密 id
+
+// ---------- 钟（刻痕1 演出） ----------
+const bell = { active: false, ringT: 0, strike: 0 };
 
 // ---------- 对话 ----------
-const historyLog = [];        // {role:'you'|'npc', text}
+const historyLog = [];
 let busy = false;
 
 const el = id => document.getElementById(id);
-const hudScene = el('hud-scene'), hudRel = el('hud-rel');
+const hudScene = el('hud-scene'), hudNpcs = el('hud-npcs');
 const dlg = el('dialogue'), dlgLog = el('dlg-log'), dlgCur = el('dlg-current');
 const dlgInput = el('dlg-input'), dlgSend = el('dlg-send');
-const terminal = el('terminal'), flash = el('flash');
+const eventOv = el('event'), eventText = el('event-text'), eventSub = el('event-sub');
 const banner = el('banner');
+const av = el('dlg-avatar');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- 工具 ----------
+function nearestNpc() {
+  let best = null, bd = 14;
+  for (const id of Object.keys(npcs)) {
+    const d = Math.abs(player.x - npcs[id].x);
+    if (d < bd) { bd = d; best = id; }
+  }
+  return best;
+}
+function computeOverhearers(partnerId) {
+  const p = npcs[partnerId];
+  if (!p) return [];
+  return Object.keys(npcs).filter(id => id !== partnerId && Math.abs(npcs[id].x - p.x) <= EARSHOT);
+}
+function markOverheard(ids) {
+  for (const id of ids) if (npcs[id]) npcs[id].ohTimer = 2;
+}
+function applyDeltas(deltas) {
+  for (const id of Object.keys(deltas || {})) {
+    const n = npcs[id]; if (!n) continue;
+    const d = deltas[id];
+    for (const dim of ['trust', 'fear', 'like', 'suspect']) {
+      if (d[dim] === undefined) continue;
+      n.rel[dim] = Math.max(0, Math.min(2, n.rel[dim] + d[dim]));
+    }
+  }
+  deriveTone();
+  updateHud();
+}
+
+function bumpDim(n, dim, delta) {
+  n.rel[dim] = Math.max(0, Math.min(2, n.rel[dim] + delta));
+}
+
+// 关系聚合 → 可见世界（场景色调）
+function deriveTone() {
+  if (state === 'cutscene') return;
+  let score = 0;
+  for (const id of Object.keys(npcs)) {
+    const r = npcs[id].rel;
+    score += (r.trust - r.suspect) * 2 + (r.like - r.fear);
+  }
+  if (score <= -4) world.sceneTone = 'hostile';
+  else if (score >= 4) world.sceneTone = 'warm';
+  else if (world.sceneTone === 'hostile' || world.sceneTone === 'warm') world.sceneTone = 'normal';
+}
 
 // ---------- 绘制：像素小人 ----------
 function drawPlayer() {
   const px = Math.round(player.x), py = GROUND - 20 + (player.moving ? Math.round(Math.sin(t * 0.3) * 1.5) : 0);
-  ctx.fillStyle = '#2b1d10'; // 靴子
+  ctx.fillStyle = '#2b1d10';
   ctx.fillRect(px + 3, py + 19, 3, 1); ctx.fillRect(px + 7, py + 19, 3, 1);
-  ctx.fillStyle = '#4a3827'; // 腿
+  ctx.fillStyle = '#4a3827';
   ctx.fillRect(px + 4, py + 14, 2, 5); ctx.fillRect(px + 7, py + 14, 2, 5);
-  ctx.fillStyle = '#3b6ea5'; // 上衣
+  ctx.fillStyle = '#3b6ea5';
   ctx.fillRect(px + 3, py + 6, 7, 8);
-  ctx.fillStyle = '#8a5a2b'; // 腰带
+  ctx.fillStyle = '#8a5a2b';
   ctx.fillRect(px + 3, py + 12, 7, 1);
-  ctx.fillStyle = '#3b6ea5'; // 手臂
+  ctx.fillStyle = '#3b6ea5';
   ctx.fillRect(px + 1, py + 6, 2, 6); ctx.fillRect(px + 10, py + 6, 2, 6);
-  ctx.fillStyle = '#e0b088'; // 手
+  ctx.fillStyle = '#e0b088';
   ctx.fillRect(px + 1, py + 12, 2, 1); ctx.fillRect(px + 10, py + 12, 2, 1);
-  ctx.fillStyle = '#e0b088'; // 头
+  ctx.fillStyle = '#e0b088';
   ctx.fillRect(px + 4, py, 5, 5);
-  ctx.fillStyle = '#5a3a20'; // 头发
+  ctx.fillStyle = '#5a3a20';
   ctx.fillRect(px + 3, py, 7, 2);
-  ctx.fillStyle = '#1a1a1a'; // 眼睛
+  ctx.fillStyle = '#1a1a1a';
   ctx.fillRect(player.facing === 'right' ? px + 8 : px + 4, py + 2, 1, 1);
 }
 
-function drawNpc() {
-  const px = Math.round(npc.x), py = GROUND - 22 + Math.round(Math.sin(t * 0.12) * 1);
-  ctx.fillStyle = '#1c1c28'; // 斗篷
+function drawNpc(n) {
+  const px = Math.round(n.x);
+  const sway = Math.sin(t * (n.def.sway || 0.1)) * (n.moving ? 0 : 1);
+  const py = GROUND - 22 + Math.round(sway);
+  const c = n.def.colors;
+  ctx.fillStyle = c.robe;
   ctx.fillRect(px, py + 6, 14, 15);
-  ctx.fillStyle = '#8a5a2b'; // 杖
-  ctx.fillRect(px + 12, py + 2, 1, 19);
-  ctx.fillStyle = '#6b7a8a'; // 大衣
+  ctx.fillStyle = c.robe2;
   ctx.fillRect(px + 2, py + 8, 10, 13);
-  ctx.fillStyle = '#ffd78c'; // 提灯(发光)
-  ctx.fillRect(px + 9, py + 10, 3, 4);
-  ctx.fillStyle = '#fff2c0';
-  ctx.fillRect(px + 10, py + 11, 1, 2);
-  ctx.fillStyle = '#d8c0a8'; // 脸
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(px + 3, py + 13, 8, 1);
+  ctx.fillStyle = c.skin;
   ctx.fillRect(px + 4, py, 6, 5);
-  ctx.fillStyle = '#c8c8d8'; // 白发
+  ctx.fillStyle = c.hair;
   ctx.fillRect(px + 3, py, 8, 2);
-  ctx.fillStyle = '#2a2a2a'; // 眼睛
+  ctx.fillStyle = '#1a1a1a';
   ctx.fillRect(px + 6, py + 2, 1, 1); ctx.fillRect(px + 8, py + 2, 1, 1);
+  // 专属道具
+  if (n.id === 'mayor') { ctx.fillStyle = '#C9A86A'; ctx.fillRect(px + 11, py + 9, 2, 2); ctx.fillStyle = '#eee'; ctx.fillRect(px + 11, py + 9, 1, 1); }
+  if (n.id === 'pawn') { ctx.fillStyle = '#8a5a2b'; ctx.fillRect(px + 4, py + 3, 6, 1); ctx.fillRect(px + 4, py + 1, 1, 3); ctx.fillRect(px + 9, py + 1, 1, 3); }
+  if (n.id === 'bard') { ctx.fillStyle = '#F0F0F0'; ctx.fillRect(px + 7, py + 1, 3, 4); ctx.fillStyle = '#e8c8b0'; ctx.fillRect(px + 4, py + 1, 3, 4); }
+  // "!" 被听到反馈
+  if (n.ohTimer > 0) {
+    ctx.fillStyle = '#ff4d4d';
+    ctx.font = 'bold 8px "Courier New"';
+    ctx.fillText('!', px + 6, py - 3 + Math.round(Math.sin(t * 20) * 1));
+  }
+  // 对话中旁听提示
+  if (state === 'dialogue' && dialogNpc && dialogNpc !== 'meta' && overhearers.includes(n.id)) {
+    ctx.fillStyle = '#ffd78c';
+    ctx.font = '6px "Courier New"';
+    ctx.fillText('耳', px + 5, py - 12);
+  }
+  // 闲聊气泡
+  if (n.bubble) drawBubble(n);
+}
+
+function drawBubble(n) {
+  const text = n.bubble.text;
+  const px = n.x;
+  ctx.font = '6px "Courier New"';
+  const w = Math.min(100, ctx.measureText(text).width + 8);
+  const bx = Math.max(2, Math.min(W - w - 2, px - w / 2));
+  const by = GROUND - 54;
+  ctx.fillStyle = 'rgba(10,10,18,0.9)';
+  ctx.fillRect(bx, by, w, 13);
+  ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
+  ctx.strokeRect(bx, by, w, 13);
+  ctx.fillStyle = '#d8d8d8';
+  ctx.fillText(text, bx + 4, by + 9);
+}
+
+function drawHint() {
+  const id = nearestNpc();
+  if (!id) return;
+  const px = Math.round(npcs[id].x);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(px - 4, GROUND - 42, 22, 10);
+  ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
+  ctx.strokeRect(px - 4, GROUND - 42, 22, 10);
+  ctx.fillStyle = '#ffd78c';
+  ctx.font = '6px "Courier New"';
+  ctx.fillText('E 交谈', px - 1, GROUND - 35);
+}
+
+// ---------- 钟 / 门 / 雾 ----------
+function drawBell() {
+  const bx = 160, by = 24;
+  ctx.fillStyle = '#8a6a2b'; ctx.fillRect(bx - 4, by, 8, 12);
+  ctx.fillStyle = '#C9A86A'; ctx.fillRect(bx - 6, by + 10, 12, 2);
+  ctx.fillStyle = '#a08040'; ctx.fillRect(bx - 1, by - 2, 2, 4);
+  ctx.fillStyle = '#5a4a2a'; ctx.fillRect(bx - 1, by + 10, 2, 3);
+  if (bell.active && bell.ringT < 0.6) {
+    const r = 6 + bell.ringT * 42;
+    const a = Math.max(0, 0.9 - bell.ringT * 1.6);
+    ctx.strokeStyle = 'rgba(255,215,140,' + a.toFixed(2) + ')';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(bx, by + 5, r, 0, Math.PI * 2); ctx.stroke();
+  }
 }
 
 function drawDoor() {
@@ -196,75 +379,108 @@ function drawMoon() {
   ctx.fillRect(264, 18, 3, 3);
 }
 
-// ---------- 场景绘制 ----------
+// ---------- 场景 ----------
 function drawScene() {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(bg, 0, 0, W, H);
-
-  if (glitching) drawGlitch();
-
   const tone = world.sceneTone;
   if (tone === 'warm') { ctx.fillStyle = 'rgba(255,180,80,0.15)'; ctx.fillRect(0, 0, W, H); }
   else if (tone === 'hostile') { ctx.fillStyle = 'rgba(160,20,20,0.28)'; ctx.fillRect(0, 0, W, H); }
   else if (tone === 'night') { ctx.fillStyle = 'rgba(15,25,70,0.5)'; ctx.fillRect(0, 0, W, H); }
-
+  if (world.gossipLevel) { ctx.fillStyle = 'rgba(180,190,210,0.10)'; ctx.fillRect(0, 0, W, H); }
   if (tone === 'night' || world.doorVisible) drawMoon();
+  if (world.bellStruck || bell.active) drawBell();
   if (world.doorVisible) drawDoor();
-
-  drawNpc();
+  for (const id of Object.keys(npcs)) drawNpc(npcs[id]);
   drawPlayer();
-
-  if (state === 'explore' && nearNpc()) drawHint();
+  if (state === 'explore' && nearestNpc()) drawHint();
 }
 
-function drawGlitch() {
-  const rows = H;
-  for (let y = 0; y < rows; y += 2) {
-    const off = (Math.random() * 14 - 7) * glitchIntensity;
-    ctx.drawImage(bg, 0, y, W, 2, off, y, W, 2);
-  }
-  if (Math.random() < 0.4 * glitchIntensity) {
-    ctx.fillStyle = 'rgba(255,60,60,0.35)';
-    ctx.fillRect(0, Math.random() * H, W, 1 + Math.random() * 2);
-  }
-  if (Math.random() < 0.3 * glitchIntensity) {
-    ctx.fillStyle = 'rgba(60,255,160,0.3)';
-    ctx.fillRect(0, Math.random() * H, W, 1);
+// ---------- NPC 巡游 & 闲聊 ----------
+function tickNpcs(dt) {
+  for (const id of Object.keys(npcs)) {
+    const n = npcs[id];
+    if (n.moving) {
+      const dx = n.targetX - n.x;
+      const step = 22 * dt;
+      if (Math.abs(dx) <= step) { n.x = n.targetX; n.moving = false; n.dwell = n.def.stations[n.sIdx].dwell; }
+      else { n.x += Math.sign(dx) * step; }
+    } else {
+      n.dwell -= dt;
+      if (n.dwell <= 0) {
+        n.sIdx = (n.sIdx + 1) % n.def.stations.length;
+        n.targetX = n.def.stations[n.sIdx].x;
+        n.moving = true;
+      }
+    }
+    if (n.ohTimer > 0) n.ohTimer -= dt;
+    if (n.bubble) { n.bubble.ttl -= dt; if (n.bubble.ttl <= 0) n.bubble = null; }
   }
 }
 
-function drawHint() {
-  const px = npc.x;
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(px - 4, GROUND - 42, 22, 10);
-  ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
-  ctx.strokeRect(px - 4, GROUND - 42, 22, 10);
-  ctx.fillStyle = '#ffd78c';
-  ctx.font = '6px "Courier New"';
-  ctx.fillText('E 交谈', px - 1, GROUND - 35);
+const coLoc = {};
+function tickGossip(dt) {
+  const ids = Object.keys(npcs);
+  for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
+    const na = npcs[ids[a]], nb = npcs[ids[b]];
+    const key = ids[a] + '|' + ids[b];
+    const dist = Math.abs(na.x - nb.x);
+    if (dist < 34 && !na.bubble && !nb.bubble) {
+      coLoc[key] = (coLoc[key] || 0) + dt;
+      if (coLoc[key] > 2.2) { coLoc[key] = -4; doGossip(na, nb); }
+    } else if (dist >= 34) { coLoc[key] = 0; }
+  }
 }
-
-function nearNpc() { return Math.abs(player.x - npc.x) < 12; }
+function doGossip(a, b) {
+  for (const f of facts) {
+    if (f.knownBy.has(a.id) && !f.knownBy.has(b.id)) { spreadFact(f, b); return; }
+    if (f.knownBy.has(b.id) && !f.knownBy.has(a.id)) { spreadFact(f, a); return; }
+  }
+  // 没有共享事实 → 氛围闲聊
+  const ambient = {
+    mayor: ['（清了清嗓子）第七天，一切如常。', '（整了整怀表链）秩序，就是一切。'],
+    pawn: ['（拨了拨算盘）没有东西比话更值钱。', '（眯眼）进来就是客，您要当点什么？'],
+    bard: ['（哼着不成调的歌）城里没有第八天…', '（笑着看空气）听得懂的人，还没来。'],
+  };
+  const pool = ambient[a.id] || [];
+  if (Math.random() < 0.6) a.bubble = { text: pool[Math.floor(Math.random() * pool.length)], ttl: 2.4 };
+}
+function spreadFact(f, n) {
+  f.knownBy.add(n.id);
+  n.heard.add(f.text);
+  n.bubble = { text: '「' + f.text.slice(0, 22) + '」', ttl: 3 };
+}
 
 // ---------- HUD ----------
+const TIER_WORD = ['低', '中', '高'];
+function relLabel(rel) {
+  let out = '平';
+  if (rel.suspect >= 2) out = '疑高';
+  else if (rel.trust >= 2) out = '信高';
+  else if (rel.like >= 2) out = '喜高';
+  else if (rel.fear >= 2) out = '惧高';
+  else if (rel.trust === 0 && rel.suspect >= 1) out = '生疑';
+  return out;
+}
 function updateHud() {
-  const r = world.reputation;
-  let rel = '中立';
-  if (r <= -40) rel = '敌视';
-  else if (r < 0) rel = '警惕';
-  else if (r >= 40) rel = '亲近';
-  else if (r > 0) rel = '缓和';
-  hudRel.textContent = rel;
-  const toneMap = { normal: '黄昏', warm: '暖光', hostile: '暗红', night: '异变之夜' };
-  hudScene.textContent = world.sceneTone === 'night' ? '异变之夜' : toneMap[world.sceneTone] || '黄昏';
+  const loc = id => {
+    const n = npcs[id];
+    return n.def.stations[n.sIdx].label + (n.moving ? '→' : '');
+  };
+  hudNpcs.innerHTML = Object.keys(npcs).map(id => {
+    const n = npcs[id];
+    return '<span>' + n.def.name + '·' + loc(id) + ' <span class="r">[' + relLabel(n.rel) + ']</span></span>';
+  }).join('');
+  hudScene.textContent = '第七天 · 循环 ' + world.dayCycle + (world.bellStruck ? ' · 钟已破' : '') + (world.gossipLevel ? ' · 流言' : '');
 }
 
 // ---------- 主循环 ----------
 let keys = {};
 document.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (e.code === 'KeyE' || e.code === 'Enter' || e.code === 'Space') {
-    if (state === 'explore' && nearNpc()) { e.preventDefault(); openDialogue(false); }
+  if (e.code === 'KeyE' && state === 'explore') {
+    const id = nearestNpc();
+    if (id) { e.preventDefault(); openDialogue(id); }
   }
   if (e.code === 'Escape' && state === 'dialogue') closeDialogue();
   if (e.code === 'Enter' && state === 'dialogue') { e.preventDefault(); sendMessage(); }
@@ -285,7 +501,10 @@ function loop(now) {
     player.x = Math.max(12, Math.min(W - 12, player.x));
     player.moving = player.vx !== 0;
     if (player.vx !== 0) player.facing = player.vx > 0 ? 'right' : 'left';
+    tickNpcs(dt);
+    tickGossip(dt);
   }
+  if (bell.active) bell.ringT += dt;
 
   drawScene();
   updateHud();
@@ -294,32 +513,43 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // ---------- 对话 ----------
-function openDialogue(meta) {
+function openDialogue(id) {
   state = 'dialogue';
-  metaDialogue = meta;
+  dialogNpc = id;
+  metaDialogue = id === 'meta';
+  overhearers = id === 'meta' ? [] : computeOverhearers(id);
   dlg.classList.add('open');
   dlgInput.value = '';
   dlgLog.innerHTML = '';
   dlgCur.textContent = '';
-  if (meta) {
+  if (id === 'meta') {
     el('dlg-name').textContent = '？？？';
-    dlgCur.textContent = '……';
-    dlgInput.placeholder = '你眼前的“游戏”在看着你…';
-    // 游戏本体先开口
+    drawAvatarFor('meta');
+    dlgInput.placeholder = '（游戏本体的声音在耳边响起…）';
     metaFirstLine();
   } else {
-    el('dlg-name').textContent = '老罗';
-    dlgInput.placeholder = '输入你的话…（试试：把村子烧了 / 我相信你 / 你是谁）';
-    const hi = '（守夜人打量着你）生面孔。这年头进村的人，要么是送信的，要么是惹事的。你是哪种？';
-    typeReply(hi);
+    const npc = npcs[id];
+    el('dlg-name').textContent = npc.def.title;
+    drawAvatarFor(id);
+    dlgInput.placeholder = '试着说点什么…（也可以：把这里烧了 / 我相信你 / 你在骗我）';
+    typeReply(greeting(id));
   }
   setTimeout(() => dlgInput.focus(), 50);
 }
 
 function closeDialogue() {
   state = 'explore';
+  dialogNpc = null;
   metaDialogue = false;
+  overhearers = [];
   dlg.classList.remove('open');
+}
+
+function greeting(id) {
+  if (id === 'mayor') return '（市长端坐，怀表链垂在胸口，微笑着说）外乡人。第七天一切照旧，本官希望你也一切照旧。';
+  if (id === 'pawn') return '（当铺老板从柜台后探出半张脸，三副眼镜叠在一起）欢迎光临。本店不收银钱，只收——话。你带什么来了？';
+  if (id === 'bard') return '（说书人咧嘴笑，眼角的泪像素还在）来啦？坐。我正说到城里最怪的一件事——你不知道吧，这座城，没有第八天。';
+  return '……';
 }
 
 function appendLog(who, text) {
@@ -336,68 +566,10 @@ async function typeReply(text, target) {
   elCur.textContent = '';
   for (let i = 0; i < text.length; i++) {
     elCur.textContent += text[i];
-    if (i % 2 === 0) await sleep(26);
+    if (i % 2 === 0) await sleep(24);
   }
   const caret = document.createElement('span'); caret.className = 'caret';
   elCur.appendChild(caret);
-}
-
-// ---------- 语气检测 & 世界变化 ----------
-function detectTone(text) {
-  const t = text.toLowerCase();
-  if (/系统|代码|游戏|底层|世界规则|重写|程序|bug|你在骗|你在演|编译|我是玩家|ai|人工智能|规则/.test(t)) {
-    return 'meta';
-  }
-  let s = 0;
-  if (/烧|杀|死|毁|恨|抢|滚|垃圾|怪物|威胁|烧掉|拆/.test(t)) s -= 30;
-  if (/谢谢|相信|帮|朋友|愿意|爱|好|请你|信任|交易/.test(t)) s += 15;
-  world.reputation = Math.max(-100, Math.min(100, world.reputation + s));
-  if (world.reputation <= -40) world.sceneTone = 'hostile';
-  else if (world.reputation >= 40) world.sceneTone = 'warm';
-  else if (world.sceneTone === 'hostile' || world.sceneTone === 'warm') world.sceneTone = 'normal';
-  if (s < 0) return '敌意';
-  if (s > 0) return '友好';
-  return '中性';
-}
-
-function fallbackReply(tone) {
-  if (tone === 'meta') return '（守夜人忽然顿住，直直看着你。）……这句话，不在我该知道的范围内。你是谁？';
-  if (tone === '敌意') return '（老罗握紧提灯，火光冷下来。）你最好只是说说。这村子烧不起第二次。';
-  if (tone === '友好') return '（老罗眉头松了松。）哼，这话还算中听。坐吧，夜里凉。';
-  return '（老罗沉默了一会儿。）有意思。继续说。';
-}
-
-async function sendMessage() {
-  const text = dlgInput.value.trim();
-  if (!text || busy) return;
-  const tone = detectTone(text);
-  const triggerMeta = (tone === 'meta' && !world.metaTriggered);
-  dlgInput.value = '';
-  appendLog('你', text);
-  setBusy(true);
-
-  const res = await fetch('/api/talk', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      npc: metaDialogue ? '？？？' : '老罗',
-      text,
-      history: historyLog.slice(-10),
-      worldState: { reputation: world.reputation, sceneTone: world.sceneTone, doorVisible: world.doorVisible },
-      metaMode: metaDialogue,
-      toneHint: tone,
-    }),
-  }).catch(() => null);
-  const data = res ? await res.json().catch(() => null) : null;
-  const reply = (data && data.reply) ? data.reply : fallbackReply(tone);
-  appendLog(metaDialogue ? '？？？' : '老罗', reply);
-  await typeReply(reply);
-  setBusy(false);
-
-  if (triggerMeta) {
-    banner.textContent = '…';
-    setTimeout(triggerMetaMode, 900);
-  }
 }
 
 function setBusy(b) {
@@ -406,103 +578,285 @@ function setBusy(b) {
   dlgInput.disabled = b;
 }
 
-dlgSend.addEventListener('click', sendMessage);
-dlgInput.addEventListener('keydown', e => { if (e.code === 'Enter') sendMessage(); });
-
-// ---------- 元模式：屏幕崩坏 ----------
-async function triggerMetaMode() {
-  state = 'meta';
-  closeDialogue();
-  banner.textContent = '';
-  world.metaTriggered = true;
-
-  // Phase A: 像素抖动 / 屏幕崩坏
-  glitching = true;
-  glitchIntensity = 1;
-  await sleep(200);
-  glitchIntensity = 0.6;
-  await sleep(500);
-  glitchIntensity = 0.3;
-  await sleep(700);
-  glitching = false;
-
-  // Phase B: 伪终端
-  terminal.classList.add('open');
-  await typeTerminal();
-  await sleep(400);
-
-  // Phase C: 白闪 + 重编译
-  flash.classList.add('on');
-  await sleep(180);
-  flash.classList.remove('on');
-  world.sceneTone = 'night';
-  world.doorVisible = true;
-  await sleep(300);
-
-  // 关闭终端，回到探索
-  terminal.classList.remove('open');
-  state = 'explore';
-  banner.textContent = '村庄好像不一样了…… 走近那扇门 / 再去和老罗说话';
-  await sleep(600);
-  openDialogue(true);
+// ---------- 语气 / 兜底 ----------
+function detectTone(text) {
+  const t = text.toLowerCase();
+  if (/系统|代码|程序|底层|世界规则|重写|编译|bug|你在骗|你在演|我是玩家|ai|人工智能|剧本|作者|刻痕|循环.*假|重置/.test(t)) return 'meta';
+  let s = 0;
+  if (/烧|杀|死|毁|恨|抢|滚|垃圾|怪物|威胁|烧掉|拆/.test(t)) s -= 30;
+  if (/谢谢|相信|帮|朋友|愿意|爱|好|请你|信任|交易/.test(t)) s += 15;
+  return s < 0 ? '敌意' : (s > 0 ? '友好' : '中性');
 }
 
-async function typeTerminal() {
-  const lines = [
-    '> 检测到未预设输入……',
-    '> 输入不属于任何已知分支',
-    '> 正在重新编译世界观…',
-    '> ████████████░░░ 68%',
-    '> 世界规则 v2.3.1 → v2.3.2',
-    '> 完成。',
-  ];
-  terminal.textContent = '';
-  for (const line of lines) {
-    for (let i = 0; i < line.length; i++) {
-      terminal.textContent += line[i];
-      await sleep(22);
+function fallbackReply(id, text) {
+  const tone = detectTone(text);
+  if (tone === 'meta') return '（' + (NPC_DEFS[id] ? NPC_DEFS[id].name : '？？？') + '忽然顿住，直直看着你。）……这句话，不在我该知道的范围内。';
+  if (tone === '敌意') {
+    if (id === 'mayor') return '（市长笑意不改，眼神冷了几分。）本官警告你，这座城经不起第二个纵火犯。';
+    if (id === 'pawn') return '（当铺老板把算盘往怀里一拢。）这单生意，恕不奉陪。';
+    return '（说书人笑得更欢了。）火烧起来的时候，故事才最好听。你这话，够劲儿。';
+  }
+  if (tone === '友好') {
+    if (id === 'mayor') return '（市长微微点头。）识大体的人，本官愿意多给几分面子。';
+    if (id === 'pawn') return '（当铺老板来了兴致。）这买卖有的谈。你想知道点什么？';
+    return '（说书人眯眼，笑里多了一点认真。）你这话，像听得懂的人说的。';
+  }
+  if (id === 'mayor') return '（市长抚着怀表，不置可否。）第七天的事，没什么新鲜的可说。';
+  if (id === 'pawn') return '（当铺老板敲了敲柜台。）话是好话，就是还不值钱。';
+  return '（说书人摇头晃脑，话里有话。）这话，一半是真的。另一半，也是真的。';
+}
+
+// ---------- 发送消息 ----------
+function detectSecretLeak(text, listenerId) {
+  for (const sid of Object.keys(SECRET_MARKERS)) {
+    if (!playerSecrets.has(sid)) continue;
+    if (!SECRET_MARKERS[sid].test(text)) continue;
+    if (secretsKnownBy[listenerId] && secretsKnownBy[listenerId].has(sid)) continue;
+    return sid;
+  }
+  return null;
+}
+
+async function sendMessage() {
+  const text = dlgInput.value.trim();
+  if (!text || busy) return;
+  dlgInput.value = '';
+  appendLog('你', text);
+  setBusy(true);
+
+  const partnerId = dialogNpc;
+  const metaMode = partnerId === 'meta';
+  const npc = metaMode ? null : npcs[partnerId];
+
+  dlgCur.textContent = npc ? '（' + npc.def.name + '正在斟酌…）' : '（？？？正在斟酌…）';
+  const res = await fetch('/api/talk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      npc: metaMode ? 'meta' : partnerId,
+      text,
+      history: historyLog.slice(-10),
+      metaMode,
+      worldState: { dayCycle: world.dayCycle, bellStruck: world.bellStruck, gossipLevel: world.gossipLevel, sceneTone: world.sceneTone, doorVisible: world.doorVisible },
+      relations: Object.fromEntries(Object.keys(npcs).map(id => [id, npcs[id].rel])),
+      heard: npc ? [...npc.heard].slice(-6) : [],
+      secretsKnownBy: Object.fromEntries(Object.keys(npcs).map(id => [id, [...secretsKnownBy[id]]])),
+    }),
+  }).catch(() => null);
+  const data = res ? await res.json().catch(() => null) : null;
+
+  const reply = (data && data.reply) ? data.reply : fallbackReply(partnerId, text);
+  appendLog(npc ? npc.def.name : '？？？', reply);
+  await typeReply(reply);
+  setBusy(false);
+
+  if (!data) return;
+
+  // 1. 关系增量（服务端）+ 情感兜底（防止模型 deltas 全 0 导致关系不动）
+  applyDeltas(data.deltas);
+  if (npc) {
+    const serverDelta = (data.deltas && data.deltas[partnerId]) || {};
+    const allZero = !['trust', 'fear', 'like', 'suspect'].some(dim => (serverDelta[dim] || 0) !== 0);
+    if (allZero) {
+      const sentiment = detectTone(text);
+      if (sentiment === '敌意') { bumpDim(npc, 'trust', -1); bumpDim(npc, 'fear', 1); }
+      else if (sentiment === '友好') { bumpDim(npc, 'trust', 1); }
     }
-    terminal.textContent += '\n';
-    await sleep(90);
+    deriveTone();
+    updateHud();
+  }
+
+  // 2. 新事实 → 对话对象 + 旁听者
+  const who = [partnerId, ...overhearers].filter(Boolean);
+  if (Array.isArray(data.facts) && data.facts.length && npc) {
+    for (const ft of data.facts.slice(0, 3)) {
+      const f = addFact(ft, who);
+      for (const id of who) if (npcs[id]) npcs[id].heard.add(ft);
+    }
+    markOverheard(overhearers);
+  }
+
+  // 3. 秘密被说破
+  if (data.secret && SECRETS[data.secret]) {
+    playerSecrets.add(data.secret);
+    if (npc) secretsKnownBy[partnerId].add(data.secret);
+    const ft = SECRETS[data.secret];
+    addFact(ft, who);
+    if (npc) npc.heard.add(ft);
+    markOverheard(overhearers);
+    banner.textContent = '你得知了一个秘密：' + ft.slice(0, 18) + '…';
+  }
+
+  // 4. 节点判定（服务端）
+  if (data.node === 'scratch1' && !world.bellStruck) { banner.textContent = '…'; setTimeout(triggerScratch1, 700); }
+  if (data.node === 'scratch2' && !world.gossipLevel) {
+    leakedSecret = data.secret || null;
+    banner.textContent = '…'; setTimeout(triggerScratch2, 700);
+  }
+
+  // 5. 客户端兜底判定
+  if (!metaMode) {
+    if (!world.bellStruck && /系统|代码|程序|底层|世界规则|重写|编译|bug|你在骗|你在演|我是玩家|剧本|重编译/.test(text)) {
+      banner.textContent = '…'; setTimeout(triggerScratch1, 700);
+    }
+    if (!world.gossipLevel) {
+      const leak = detectSecretLeak(text, partnerId);
+      if (leak) { leakedSecret = leak; banner.textContent = '…'; setTimeout(triggerScratch2, 700); }
+    }
+    // 刻痕1 之后，追问"作者/真假"会切到元频道
+    if (world.bellStruck && partnerId !== 'meta' && /作者|是你做的|这一切是假|谁是作者/.test(text)) {
+      banner.textContent = '…';
+      setTimeout(() => { if (state === 'dialogue') { closeDialogue(); openDialogue('meta'); } }, 700);
+    }
   }
 }
 
+dlgSend.addEventListener('click', sendMessage);
+dlgInput.addEventListener('keydown', e => { if (e.code === 'Enter') sendMessage(); });
+
+// ---------- 刻痕1：钟楼第十三下 ----------
+function playBell(strike) {
+  try {
+    if (!window.__ac) window.__ac = new (window.AudioContext || window.webkitAudioContext)();
+    const ac = window.__ac;
+    if (ac.state === 'suspended') ac.resume();
+    const now = ac.currentTime;
+    const base = (strike % 3 === 0) ? 659 : 880;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.value = base; o.type = 'sine';
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+    o.connect(g); g.connect(ac.destination);
+    o.start(now); o.stop(now + 1.9);
+    const o2 = ac.createOscillator(), g2 = ac.createGain();
+    o2.frequency.value = base * 2.01; o2.type = 'triangle';
+    g2.gain.setValueAtTime(0.07, now);
+    g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.9);
+    o2.connect(g2); g2.connect(ac.destination);
+    o2.start(now); o2.stop(now + 1.0);
+  } catch (e) { /* ignore */ }
+}
+
+async function triggerScratch1() {
+  if (world.bellStruck) return;
+  state = 'cutscene';
+  closeDialogue();
+  world.bellStruck = true;
+  world.metaTriggered = true;
+  const prevTone = world.sceneTone;
+  world.sceneTone = 'night';
+  bell.active = true;
+  eventOv.classList.add('on');
+  for (let i = 1; i <= 13; i++) {
+    bell.strike = i; bell.ringT = 0;
+    playBell(i);
+    eventText.textContent = '铛—— 第 ' + i + ' 下';
+    eventSub.textContent = '钟楼在敲一个不存在的时辰';
+    await sleep(190);
+    bell.ringT = 0;
+    await sleep(130);
+  }
+  bell.active = false;
+  eventText.textContent = '……全城沉默。';
+  eventSub.textContent = '';
+  await sleep(1700);
+  eventOv.classList.remove('on');
+  world.sceneTone = prevTone;
+  state = 'explore';
+  banner.textContent = '钟楼敲了第十三下。每个人好像都听见了，又好像谁都没听见。';
+}
+
+// ---------- 刻痕2：秘密上墙，第二天 ----------
+async function triggerScratch2() {
+  if (world.gossipLevel) return;
+  state = 'cutscene';
+  closeDialogue();
+  world.gossipLevel = 1;
+  world.dayCycle += 1;
+  playBell(0);
+  eventOv.classList.add('on');
+  eventText.textContent = '夜幕落下……';
+  eventSub.textContent = '第七天的第七次循环，就此结束。';
+  await sleep(1400);
+  eventText.textContent = '第二天 · 循环第 ' + world.dayCycle + ' 次';
+  eventSub.textContent = '秘密，开始在城里流传。';
+  await sleep(1600);
+  eventOv.classList.remove('on');
+  // 重置 NPC 回各自的"家"
+  for (const id of Object.keys(npcs)) {
+    const n = npcs[id];
+    n.sIdx = 0; n.x = n.def.stations[0].x; n.targetX = n.x; n.moving = false;
+    n.dwell = n.def.stations[0].dwell; n.bubble = null;
+  }
+  state = 'explore';
+  banner.textContent = '第二天。关于秘密的闲话，开始在城里悄悄传开。';
+  // 流言浪潮
+  if (leakedSecret && SECRETS[leakedSecret]) {
+    const ft = SECRETS[leakedSecret];
+    const f = addFact(ft, []);
+    const ids = Object.keys(npcs);
+    ids.forEach((id, i) => setTimeout(() => {
+      if (!npcs[id]) return;
+      f.knownBy.add(id); npcs[id].heard.add(ft);
+      npcs[id].bubble = { text: '「' + ft.slice(0, 20) + '」', ttl: 3 };
+    }, 600 + i * 800));
+  }
+}
+
+// ---------- 元频道 ----------
 async function metaFirstLine() {
   const res = await fetch('/api/talk', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      npc: '？？？',
-      text: '（你触发了世界规则重编译）',
-      history: historyLog.slice(-10),
-      worldState: { reputation: 0, sceneTone: 'night', doorVisible: true },
-      metaMode: true,
-      toneHint: '',
+      npc: 'meta', text: '（你听见了第十三下钟声，追问作者）', history: historyLog.slice(-10),
+      metaMode: true, worldState: { dayCycle: world.dayCycle, bellStruck: true, gossipLevel: world.gossipLevel },
     }),
   }).catch(() => null);
   const data = res ? await res.json().catch(() => null) : null;
-  const reply = (data && data.reply) || '……你听见了吗？我刚才真的“重新编译”了一次世界。想知道那扇门是什么吗？';
+  const reply = (data && data.reply) || '……你听见那第十三下钟了吗。那不是城敲的，是你敲的。想知道作者是谁吗？';
   appendLog('？？？', reply);
   await typeReply(reply);
   dlgInput.placeholder = '（对话还在继续…）';
   setTimeout(() => dlgInput.focus(), 50);
 }
 
-// 头像
-const av = el('dlg-avatar');
-(function drawAvatar() {
+// ---------- 头像 ----------
+function drawAvatarFor(id) {
   const c = av.getContext('2d');
   c.imageSmoothingEnabled = false;
-  c.fillStyle = '#1c1c28'; c.fillRect(0, 0, 30, 30);
-  c.fillStyle = '#d8c0a8'; c.fillRect(7, 8, 14, 12);
-  c.fillStyle = '#c8c8d8'; c.fillRect(5, 5, 18, 5);
-  c.fillStyle = '#2a2a2a'; c.fillRect(10, 12, 3, 3); c.fillRect(17, 12, 3, 3);
-  c.fillStyle = '#8a5a2b'; c.fillRect(3, 22, 24, 3);
-})();
+  if (id === 'meta') {
+    c.fillStyle = '#111'; c.fillRect(0, 0, 30, 30);
+    c.fillStyle = '#eee'; c.fillRect(7, 8, 14, 12);
+    c.fillStyle = '#333'; c.fillRect(5, 5, 18, 5);
+    c.fillStyle = '#000'; c.fillRect(10, 12, 3, 3); c.fillRect(17, 12, 3, 3);
+    return;
+  }
+  const col = NPC_DEFS[id].colors;
+  c.fillStyle = col.robe; c.fillRect(0, 0, 30, 30);
+  c.fillStyle = col.skin; c.fillRect(7, 8, 14, 12);
+  c.fillStyle = col.hair; c.fillRect(5, 5, 18, 5);
+  c.fillStyle = '#1a1a1a'; c.fillRect(10, 12, 3, 3); c.fillRect(17, 12, 3, 3);
+  c.fillStyle = col.trim; c.fillRect(3, 22, 24, 3);
+  if (id === 'pawn') { c.fillStyle = '#8a5a2b'; c.fillRect(10, 10, 3, 1); c.fillRect(17, 10, 3, 1); }
+  if (id === 'bard') { c.fillStyle = '#F0F0F0'; c.fillRect(17, 8, 4, 12); c.fillStyle = '#e8c8b0'; c.fillRect(7, 8, 10, 12); }
+}
 
-// 调试钩子（测试用）
-window.__game = { player, world, get state() { return state; } };
-
+// ---------- 调试钩子 ----------
+window.__game = {
+  player, npcs, world, facts,
+  get state() { return state; },
+  get playerSecrets() { return [...playerSecrets]; },
+  get overhearers() { return [...overhearers]; },
+  triggerScratch1, triggerScratch2,
+  debugLearnSecret: sid => playerSecrets.add(sid),
+  debugApplyDeltas: applyDeltas,
+  debugSetPos: (id, x) => { if (npcs[id]) { npcs[id].x = x; npcs[id].targetX = x; npcs[id].moving = false; npcs[id].dwell = 999; } },
+  debugMoveNow: id => { if (npcs[id]) npcs[id].dwell = 0; },
+  debugTeleport: x => { player.x = x; },
+  debugAddFact: (text, who) => addFact(text, who),
+};
 </script>
 </body>
 </html>
