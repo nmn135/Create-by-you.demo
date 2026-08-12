@@ -194,6 +194,7 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
   await runAsync('greeting(pawn) 引导分支触发', async () => {
     G.clearSave(); G.loadGame();
     G.world.gossipLevel = 0; G.world.scene = 'day7';
+    G.debugSetPos('mayor', G.bellPos.x);             // 市长已在钟楼 → 引导演出跳过
     await G.triggerScratch1();                       // state → explore
     G.debugLearnSecret('mayor');                     // 玩家已知一个秘密
     G.debugTeleport(250); G.debugSetPos('pawn', 250);
@@ -209,6 +210,7 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
     store.delete('seventhDaySave_v2'); G.loadGame();
     G.world.scene = 'day2'; G.world.gossipLevel = 1;
     G.world.bellStruck = false;
+    G.debugSetPos('mayor', G.bellPos.x);  // 引导演出跳过，快速进 explore
     // 进入 explore 态
     await G.triggerScratch1();            // 结束后 state=explore
     if (G.state !== 'explore') throw new Error('state=' + G.state);
@@ -389,6 +391,21 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
     G.audio.sfx('open'); G.audio.sfx('close'); G.audio.sfx('send');
     G.audio.sfx('secret'); G.audio.sfx('step'); G.audio.sfx('ending');
     G.audio.switchBgm('day7'); G.audio.switchBgm('day2'); G.audio.stopBgm();
+  });
+
+  // 19. 引导移动 walkToBell（对话动作可视化）
+  await runAsync('引导移动 walkToBell(市长走向钟楼)', async () => {
+    G.clearSave(); G.loadGame();
+    G.debugSetPos('mayor', 50);
+    const bp = G.bellPos.x;
+    let arrived = false;
+    const w = G.walkToBell('mayor', '测试带路', () => { arrived = true; });
+    if (G.state !== 'guide') throw new Error('walk 中 state 应 guide，得=' + G.state);
+    await w;
+    if (!arrived) throw new Error('onArrive 未触发');
+    if (Math.abs(G.npcs.mayor.x - bp) > 1) throw new Error('市长未到钟楼 x=' + G.npcs.mayor.x);
+    if (G.walking) throw new Error('walking 应 false');
+    if (G.state !== 'explore') throw new Error('结束后 state 应 explore');
   });
 
   console.log('\n========== 结果 ==========');

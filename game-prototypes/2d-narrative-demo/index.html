@@ -373,6 +373,7 @@ let metaDialogue = false;
 let overhearers = [];    // 对话时旁听的 NPC
 const EARSHOT = 46;
 let leakedSecret = null; // 刻痕2 泄漏的秘密 id
+let walkClockQueued = false; // 市长"跟我去钟楼"引导是否已排队（防重复触发）
 
 // ---------- 钟（刻痕1 演出） ----------
 const bell = { active: false, ringT: 0, strike: 0 };
@@ -736,6 +737,9 @@ function updateCam(dt) {
   if (state === 'dialogue' && dialogNpc && dialogNpc !== 'meta') {
     const n = npcs[dialogNpc];
     tx = n.x; ty = GROUND - 30; tz = CAM_ZOOM;
+  } else if (state === 'guide' && scriptedNpc && npcs[scriptedNpc]) {
+    const n = npcs[scriptedNpc];   // 引导演出时相机跟随带路人
+    tx = n.x; ty = GROUND - 30; tz = CAM_ZOOM;
   }
   const k = Math.min(1, dt * 2.5);
   cam.x += (tx - cam.x) * k;
@@ -764,10 +768,43 @@ function drawScene() {
   if (state === 'explore' && nearestNpc()) drawHint();
 }
 
+// ---------- 引导移动（对话动作可视化） ----------
+// 让 npcId 带路走向钟楼，玩家自动跟在后面，相机跟随。不受主循环帧率影响，适合演出。
+let scriptedNpc = null;   // 演出中由 cutscene 控制移动的 NPC（tickNpcs 跳过）
+async function walkToBell(npcId, line, onArrive) {
+  const n = npcs[npcId]; if (!n) return;
+  const tx = BELL_POS.x;
+  if (line) banner.textContent = line;
+  if (Math.abs(n.x - tx) < 4) { await sleep(400); if (onArrive) onArrive(); return; }
+  const prevState = state;
+  scriptedNpc = npcId;
+  state = 'guide';
+  const x0 = n.x, px0 = player.x;
+  const follow = Math.abs(player.x - tx) > 16;
+  const pTarget = Math.max(12, Math.min(W - 12, tx - (tx >= player.x ? 14 : -14)));
+  const dur = Math.min(1.4, 0.05 + Math.abs(n.x - tx) / 80);
+  const t0 = Date.now();
+  n.moving = true; n.targetX = tx; n.dwell = 999;
+  player.moving = follow;
+  while (Date.now() - t0 < dur * 1000) {
+    const k = Math.min(1, (Date.now() - t0) / (dur * 1000));
+    n.x = x0 + (tx - x0) * k;
+    if (follow) player.x = px0 + (pTarget - px0) * k;
+    await sleep(16);
+  }
+  n.x = tx; n.targetX = tx; n.moving = false;
+  player.moving = false;
+  player.facing = tx >= player.x ? 'right' : 'left';
+  scriptedNpc = null;
+  state = prevState;
+  if (onArrive) onArrive();
+}
+
 // ---------- NPC 巡游 & 闲聊 ----------
 function tickNpcs(dt) {
   for (const id of Object.keys(npcs)) {
     const n = npcs[id];
+    if (scriptedNpc === id) continue;   // 演出引导中，交给 cutscene 控制
     if (n.moving) {
       const dx = n.targetX - n.x;
       const step = 22 * dt;
@@ -868,18 +905,20 @@ function loop(now) {
   last = now;
   t += dt;
 
-  if (state === 'explore') {
-    player.vx = 0;
-    if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -AV;
-    if (keys['ArrowRight'] || keys['KeyD']) player.vx = AV;
-    player.x += player.vx * dt;
-    player.x = Math.max(12, Math.min(W - 12, player.x));
-    player.moving = player.vx !== 0;
-    if (player.vx !== 0) player.facing = player.vx > 0 ? 'right' : 'left';
-    if (player.moving) { stepT -= dt; if (stepT <= 0) { stepT = 0.28; AudioSys.sfx('step'); } }
-    else stepT = 0;
+  if (state === 'explore' || state === 'guide') {
+    if (state === 'explore') {
+      player.vx = 0;
+      if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -AV;
+      if (keys['ArrowRight'] || keys['KeyD']) player.vx = AV;
+      player.x += player.vx * dt;
+      player.x = Math.max(12, Math.min(W - 12, player.x));
+      player.moving = player.vx !== 0;
+      if (player.vx !== 0) player.facing = player.vx > 0 ? 'right' : 'left';
+      if (player.moving) { stepT -= dt; if (stepT <= 0) { stepT = 0.28; AudioSys.sfx('step'); } }
+      else stepT = 0;
+      tickGossip(dt);
+    }
     tickNpcs(dt);
-    tickGossip(dt);
   }
   if (bell.active) bell.ringT += dt;
 
@@ -1148,11 +1187,23 @@ async function sendMessage() {
     leakedSecret = data.secret || null;
     banner.textContent = '…'; setTimeout(triggerScratch2, 700);
   }
+  if (data.node === 'walk_clock' && !world.bellStruck && partnerId === 'mayor') {
+    walkClockQueued = true;
+    banner.textContent = '…';
+    setTimeout(() => { if (state === 'dialogue') { closeDialogue(); walkToBell('mayor', '（市长整了整怀表，快步向钟楼走去）……跟上。', () => openDialogue('mayor')); } }, 700);
+  }
 
   // 5. 客户端兜底判定
   if (!metaMode) {
     if (!world.bellStruck && /系统|代码|程序|底层|世界规则|重写|编译|bug|你在骗|你在演|我是玩家|剧本|重编译/.test(text)) {
       banner.textContent = '…'; setTimeout(triggerScratch1, 700);
+    }
+    // 引导移动兜底：市长说"跟我去钟楼" → 真的带路（服务端未返回 walk_clock 时）
+    if (!world.bellStruck && !walkClockQueued && partnerId === 'mayor' &&
+        /钟楼/.test(reply) && /跟我|跟我走|跟我来|随我来|跟上|带.{0,3}你/.test(reply)) {
+      walkClockQueued = true;
+      banner.textContent = '…';
+      setTimeout(() => { if (state === 'dialogue') { closeDialogue(); walkToBell('mayor', '（市长整了整怀表，快步向钟楼走去）……跟上。', () => openDialogue('mayor')); } }, 700);
     }
     if (!world.gossipLevel) {
       const leak = detectSecretLeak(text, partnerId);
@@ -1196,13 +1247,15 @@ function playBell(strike) {
 
 async function triggerScratch1() {
   if (world.bellStruck) return;
-  state = 'cutscene';
   closeDialogue();
   world.bellStruck = true;
   world.metaTriggered = true;
+  // 引导移动：市长带路走向钟楼（对话动作可视化，不再"原地不动"）
+  await walkToBell('mayor', '（市长整了整怀表，快步向钟楼走去）……跟上。');
   const prevTone = world.sceneTone;
   world.sceneTone = 'night';
   bell.active = true;
+  state = 'cutscene';
   eventOv.classList.add('on');
   for (let i = 1; i <= 13; i++) {
     bell.strike = i; bell.ringT = 0;
@@ -1436,6 +1489,9 @@ window.__game = {
   debugMoveNow: id => { if (npcs[id]) npcs[id].dwell = 0; },
   debugTeleport: x => { player.x = x; },
   debugAddFact: (text, who) => addFact(text, who),
+  walkToBell,
+  get scriptedNpc() { return scriptedNpc; },
+  get walking() { return scriptedNpc !== null; },
 };
 </script>
 </body>
