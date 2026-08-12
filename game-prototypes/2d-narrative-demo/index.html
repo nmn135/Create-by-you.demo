@@ -601,8 +601,23 @@ function drawPapers() {
 }
 
 // ---------- 场景 ----------
+// 对话相机：推近到说话 NPC（lerp 缓动），平时回全场景
+const cam = { x: 160, y: 90, zoom: 1 };
+const CAM_ZOOM = 1.3;
+function updateCam(dt) {
+  let tx = 160, ty = 90, tz = 1;   // 默认回到全场景（世界中心）
+  if (state === 'dialogue' && dialogNpc && dialogNpc !== 'meta') {
+    const n = npcs[dialogNpc];
+    tx = n.x; ty = GROUND - 30; tz = CAM_ZOOM;
+  }
+  const k = Math.min(1, dt * 2.5);
+  cam.x += (tx - cam.x) * k;
+  cam.y += (ty - cam.y) * k;
+  cam.zoom += (tz - cam.zoom) * k;
+}
 function drawScene() {
-  ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+  const a = RENDER_SCALE * cam.zoom;
+  ctx.setTransform(a, 0, 0, a, RENDER_SCALE * (W / 2 - cam.x * cam.zoom), RENDER_SCALE * (H / 2 - cam.y * cam.zoom));
   ctx.imageSmoothingEnabled = false;
   const sc = SCENES[world.scene] || SCENES.day7;
   const artReady = world.scene === 'day2' && day2ArtReady();   // 有正式 bg_day2.png 就用它
@@ -736,6 +751,7 @@ function loop(now) {
   }
   if (bell.active) bell.ringT += dt;
 
+  updateCam(dt);
   drawScene();
   updateHud();
   if (dirty && now - lastSaveT > 5000) saveGame();   // 流言/旁听等自动兜底存档
@@ -1181,6 +1197,7 @@ window.__game = {
   saveGame, loadGame, clearSave,
   debugOpenDialogue: id => openDialogue(id), debugCloseDialogue: closeDialogue,
   get lastReplies() { return Object.fromEntries(Object.keys(npcs).map(id => [id, npcs[id].lastReply])); },
+  get cam() { return { ...cam }; },
   get reputation() { return world.reputation; },
   debugLearnSecret: sid => playerSecrets.add(sid),
   debugResetSecrets: () => playerSecrets.clear(),

@@ -317,6 +317,24 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
     G.debugCloseDialogue();
   });
 
+  // 16. 对话相机推近
+  await runAsync('对话相机推近NPC后回位', async () => {
+    G.debugResetSecrets();
+    G.debugSetPos('pawn', 250);
+    G.debugOpenDialogue('pawn');
+    for (let i = 0; i < 60; i++) frame();   // 推近收敛
+    const c = G.cam;
+    if (c.zoom < 1.2) throw new Error('未推近 zoom=' + c.zoom.toFixed(3));
+    if (Math.abs(c.x - 250) > 40) throw new Error('未对准 NPC x=' + c.x.toFixed(1) + ' npc=250');
+    G.debugCloseDialogue();
+    for (let i = 0; i < 60; i++) frame();   // 回位收敛
+    const c2 = G.cam;
+    if (c2.zoom > 1.05) throw new Error('未回位 zoom=' + c2.zoom.toFixed(3));
+    if (Math.abs(c2.x - 160) > 40) throw new Error('未回到中心 x=' + c2.x.toFixed(1));
+    // 非对话时相机应完整显示场景（ty≈0）
+    if (Math.abs(c2.y - 90) > 40) throw new Error('y 未回位 y=' + c2.y.toFixed(1));
+  });
+
   console.log('\n========== 结果 ==========');
   if (results.ok) { console.log('全部通过 ✓'); process.exit(0); }
   else { console.error(JSON.stringify(results.errors, null, 2)); process.exit(1); }
