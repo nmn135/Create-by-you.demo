@@ -28,17 +28,14 @@
 
 ## AI 对话配置（可选）
 
-不配置也能玩（离线兜底回复）。要实时 AI 对话，需要 **Doubao（豆包）Ark API Key**：
+不配置也能玩（离线兜底回复）。要实时 AI 对话，任选其一：
 
-1. 在本目录新建 `.env`，内容一行：
-   ```
-   DOUBAO_API_KEY=你的ark密钥
-   ```
-2. 重启 `server.js`
+- **推荐 · DeepSeek（快，~1s 级）**：新建 `.env` 一行 `DEEPSEEK_API_KEY=你的密钥`，或设置环境变量 `DEEPSEEK_API_KEY`。
+- **兜底 · Doubao（豆包）**：`DOUBAO_API_KEY=你的ark密钥`（好友机器未配 DeepSeek 时自动回退到它）。
 
-`.env` 已被 gitignore 排除，密钥不会进仓库；也可用环境变量 `DOUBAO_API_KEY`。
+`.env` 已被 gitignore 排除，密钥不会进仓库。**解析顺序**：`DEEPSEEK_API_KEY` 环境变量 → `.env` → `DOUBAO_API_KEY` 环境变量 → `.env` → 作者本机快照。
 
-> 注意：对话走的是云端 LLM，回复需要几秒到十几秒（视模型负载），期间会显示「正在斟酌…」。
+> 注意：对话走的是云端 LLM。DeepSeek 通常 1~3 秒，Doubao 负载高时可能十几秒；期间会显示「正在斟酌…」。
 
 ## 彩蛋
 

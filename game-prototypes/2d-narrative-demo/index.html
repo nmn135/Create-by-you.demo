@@ -73,7 +73,7 @@
 </style>
 </head>
 <body>
-<div id="wrap"><canvas id="game" width="320" height="180"></canvas></div>
+<div id="wrap"><canvas id="game" width="960" height="540"></canvas></div>
 <div id="hud">
   场景：<b id="hud-scene">第七天 · 循环 7</b>
   <div id="hud-npcs"></div>
@@ -101,6 +101,9 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = 320, H = 180, GROUND = 158;
+const RENDER_SCALE = 3; // 内部 3 倍分辨率渲染：文字清晰、不失像素味（canvas 已设 960x540）
+canvas.width = W * RENDER_SCALE;
+canvas.height = H * RENDER_SCALE;
 
 // ---------- 资源 ----------
 const bg = new Image();
@@ -306,14 +309,14 @@ function drawNpc(n) {
   // "!" 被听到反馈
   if (n.ohTimer > 0) {
     ctx.fillStyle = '#ff4d4d';
-    ctx.font = 'bold 8px "Courier New"';
+    ctx.font = 'bold 10px "Courier New"';
     ctx.fillText('!', px + 6, py - 3 + Math.round(Math.sin(t * 20) * 1));
   }
   // 对话中旁听提示
   if (state === 'dialogue' && dialogNpc && dialogNpc !== 'meta' && overhearers.includes(n.id)) {
     ctx.fillStyle = '#ffd78c';
-    ctx.font = '6px "Courier New"';
-    ctx.fillText('耳', px + 5, py - 12);
+    ctx.font = '8px "Courier New"';
+    ctx.fillText('耳', px + 4, py - 12);
   }
   // 闲聊气泡
   if (n.bubble) drawBubble(n);
@@ -322,16 +325,16 @@ function drawNpc(n) {
 function drawBubble(n) {
   const text = n.bubble.text;
   const px = n.x;
-  ctx.font = '6px "Courier New"';
-  const w = Math.min(100, ctx.measureText(text).width + 8);
+  ctx.font = '8px "Courier New"';
+  const w = Math.min(120, ctx.measureText(text).width + 10);
   const bx = Math.max(2, Math.min(W - w - 2, px - w / 2));
-  const by = GROUND - 54;
+  const by = GROUND - 56;
   ctx.fillStyle = 'rgba(10,10,18,0.9)';
-  ctx.fillRect(bx, by, w, 13);
+  ctx.fillRect(bx, by, w, 16);
   ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
-  ctx.strokeRect(bx, by, w, 13);
+  ctx.strokeRect(bx, by, w, 16);
   ctx.fillStyle = '#d8d8d8';
-  ctx.fillText(text, bx + 4, by + 9);
+  ctx.fillText(text, bx + 5, by + 12);
 }
 
 function drawHint() {
@@ -339,12 +342,12 @@ function drawHint() {
   if (!id) return;
   const px = Math.round(npcs[id].x);
   ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(px - 4, GROUND - 42, 22, 10);
+  ctx.fillRect(px - 4, GROUND - 43, 30, 14);
   ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
-  ctx.strokeRect(px - 4, GROUND - 42, 22, 10);
+  ctx.strokeRect(px - 4, GROUND - 43, 30, 14);
   ctx.fillStyle = '#ffd78c';
-  ctx.font = '6px "Courier New"';
-  ctx.fillText('E 交谈', px - 1, GROUND - 35);
+  ctx.font = '8px "Courier New"';
+  ctx.fillText('E 交谈', px - 1, GROUND - 34);
 }
 
 // ---------- 钟 / 门 / 雾 ----------
@@ -381,6 +384,7 @@ function drawMoon() {
 
 // ---------- 场景 ----------
 function drawScene() {
+  ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(bg, 0, 0, W, H);
   const tone = world.sceneTone;

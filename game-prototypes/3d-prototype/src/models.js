@@ -57,7 +57,8 @@ export class ModelManager {
   // ------------------------------------------------------------
   async _fileExists(url) {
     try {
-      const resp = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(5000) });
+      // 15s：模型文件最大 16MB，慢环境（软件渲染/弱网/高负载）下 5s 会误判缺失
+      const resp = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(15000) });
       if (!resp.ok) return false;
       if (resp.body && resp.body.cancel) { try { await resp.body.cancel(); } catch (e) { /* ignore */ } }
       return true;

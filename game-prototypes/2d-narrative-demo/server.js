@@ -1,5 +1,5 @@
 // 封印之殿 · 第七天 · 像素叙事 Demo v2 服务器
-// 静态托管 + /api/talk 代理 doubao LLM，返回结构化结果 {reply, facts, deltas, node, secret}
+// 静态托管 + /api/talk 代理 LLM（DeepSeek 优先，Doubao 兜底），返回结构化结果 {reply, facts, deltas, node, secret}
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -7,9 +7,40 @@ const path = require('path');
 const PORT = process.env.PORT || 8890;
 const ROOT = __dirname;
 
+// 作者本机 doubao 快照（仅作最后兜底，不进仓库）
 const KEY_SRC = 'C:/Users/11988/.claude/file-history/ecca7d29-e2e2-4524-903f-7e5846e7a39e/4667fd2cf3e22d17@v3';
-const MODEL = 'doubao-seed-2-0-lite-260428';
-const ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+
+// 两个可用提供商：DeepSeek 快且便宜（首选），Doubao 备胎（好友机器未配 DeepSeek 时）
+const PROVIDERS = {
+  deepseek: {
+    model: 'deepseek-chat',
+    endpoint: 'https://api.deepseek.com/v1/chat/completions',
+    field: 'DEEPSEEK_API_KEY',
+    files: [path.join(ROOT, '.env')],
+  },
+  doubao: {
+    model: 'doubao-seed-2-0-lite-260428',
+    endpoint: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    field: 'DOUBAO_API_KEY',
+    files: [path.join(ROOT, '.env'), KEY_SRC],
+  },
+};
+
+// 解析顺序：DeepSeek 环境变量 → .env → Doubao 环境变量 → .env → 本机快照
+function getConfig() {
+  for (const name of ['deepseek', 'doubao']) {
+    const p = PROVIDERS[name];
+    if (process.env[p.field]) return { provider: name, key: process.env[p.field].trim() };
+    for (const file of p.files) {
+      try {
+        const raw = fs.readFileSync(file, 'utf-8');
+        const m = raw.match(new RegExp(p.field + '\\s*=\\s*["\']?([^"\'\r\n#\\s]+)'));
+        if (m) return { provider: name, key: m[1].trim() };
+      } catch (e) { /* ignore */ }
+    }
+  }
+  return { provider: null, key: '' };
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -19,19 +50,6 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.json': 'application/json',
 };
-
-// 密钥读取优先级：环境变量 → 本目录 .env → 作者本机快照
-function getKey() {
-  if (process.env.DOUBAO_API_KEY) return process.env.DOUBAO_API_KEY.trim();
-  for (const file of [path.join(ROOT, '.env'), KEY_SRC]) {
-    try {
-      const raw = fs.readFileSync(file, 'utf-8');
-      const m = raw.match(/DOUBAO_API_KEY\s*=\s*["']?([^"'\r\n#\s]+)/);
-      if (m) return m[1].trim();
-    } catch (e) { /* ignore */ }
-  }
-  return '';
-}
 
 // ---------- 角色人格（依据《第七天》人物设定） ----------
 const PERSONAS = {
@@ -128,17 +146,18 @@ function parseJson(content) {
 }
 
 async function talk(body) {
-  const apiKey = getKey();
-  if (!apiKey) return { reply: '（系统离线：找不到对话密钥）', offline: true };
+  const { provider, key } = getConfig();
+  if (!key) return { reply: '（系统离线：找不到对话密钥）', offline: true };
+  const P = PROVIDERS[provider];
 
   const sys = buildSystemPrompt(body);
   const history = (body.history || []).map(h => ({ role: h.role === 'npc' ? 'assistant' : 'user', content: h.text }));
 
-  const resp = await fetch(ENDPOINT, {
+  const resp = await fetch(P.endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
     body: JSON.stringify({
-      model: MODEL,
+      model: P.model,
       messages: [
         { role: 'system', content: sys },
         ...history.slice(-8),
@@ -203,8 +222,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
+  const cfg = getConfig();
   console.log('┌────────────────────────────────────────────┐');
   console.log('│  封印之殿 · 第七天 · 像素叙事 Demo v2      │');
   console.log('│  打开浏览器访问: http://localhost:' + PORT + '    │');
+  console.log('│  对话引擎: ' + (cfg.provider ? cfg.provider.toUpperCase() : '离线（无密钥）').padEnd(29) + '│');
   console.log('└────────────────────────────────────────────┘');
 });
