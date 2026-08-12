@@ -12,9 +12,12 @@ DEEPSEEK_API_KEY = (
 )
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 
-# 型号选择：意图解析用 Pro（高准确度），回复生成用 Flash（便宜、快）
-INTENT_MODEL = "deepseek-v4-pro"      # 意图解析
-REPLY_MODEL = "deepseek-v4-flash"     # 回复生成
+# 型号选择：DeepSeek 官方模型仅 deepseek-chat（V3.2+，快且准）与 deepseek-reasoner（思考型）。
+# 意图解析与回复生成统一用 deepseek-chat——实测 ~0.3s 响应、JSON 稳定。
+# 注意：历史上用过 "deepseek-v4-pro"/"deepseek-v4-flash"（2026-08-12 曾出现在旧配置），
+# 这两个不是有效模型名，会导致空响应/卡顿而触发整条兜底链；已废弃。
+INTENT_MODEL = "deepseek-chat"      # 意图解析
+REPLY_MODEL = "deepseek-chat"       # 回复生成
 
 # === 游戏参数 ===
 INITIAL_TRUST = 30          # 初始信任度
