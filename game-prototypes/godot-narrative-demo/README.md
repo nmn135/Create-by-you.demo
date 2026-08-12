@@ -124,6 +124,40 @@ move_and_slide()                            # 走，撞到就停
 - 选中任一 NPC → Inspector 里把 `collision_layer` 改成 1、`collision_mask` 改成 1，F5 看看会发生什么（提示：NPC 开始"堵车"）
 - 选中 NPC 下的 `CollisionShape2D`，在场景视图里拖那个蓝色框，调大调小试试手感
 
+## 第六课 · 感应区 Area2D：别再"量距离"了
+
+之前判断"能不能跟 NPC 说话"，用的是土办法：算玩家和 NPC 的**横向距离 < 20**。这招有两个毛病——只比横坐标、而且逻辑散在玩家身上。
+
+这一课换成 Godot 的正规军 **Area2D（感应区）**：每个 NPC 身上挂一个透明的感应圈，玩家走进来触发 `body_entered` 信号、走出去触发 `body_exited` 信号，NPC 自己记下"玩家在不在身边"。
+
+```
+NPC (CharacterBody2D)               ← 第六课版
+├── CollisionShape2D                ← 实体碰撞盒（第五课，挡玩家的）
+└── Area2D (感应区，透明不挡路)
+    └── CollisionShape2D            ← CircleShape2D 半径 22 的感应圈
+```
+
+NPC 侧（谁进圈、谁出圈，NPC 自己管）：
+```gdscript
+$Area2D.body_entered.connect(_on_area_body_entered)
+func _on_area_body_entered(body: Node2D) -> void:
+	if body.is_in_group("player"):
+		player_near = true
+```
+
+玩家侧（不再量距离，只问结果）：
+```gdscript
+func _nearby_npc() -> Node2D:
+	for n in get_tree().get_nodes_in_group("npcs"):
+		if n.player_near:
+			return n
+	return null
+```
+
+**为什么这招是万金油**：`body_entered` / `body_exited` 信号是所有"进入区域触发事件"的标准做法——触发剧情、陷阱、传送门、购物半径，全是它。以后做"走进钟楼就响起旁白"，也只是再挂一个 Area2D 的事。
+
+**课后自己动手试**：选中任一 NPC → 展开 `Area2D` → 选中它的 `CollisionShape2D`，在场景视图里把感应圈**拖大拖小**，感受"多大范围才弹 E 提示"。
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -145,6 +179,9 @@ move_and_slide()                            # 走，撞到就停
 | `collision_mask` | 我会撞到哪些层 | 同上 |
 | `_physics_process` | 物理帧（固定 60 次/秒） | 物理体的移动放这 |
 | `move_and_slide()` | "走，撞到就停" | 物理体每帧最后调用 |
+| `Area2D` | 感应区（透明，不挡路） | 挂在身上，检测"谁进来了" |
+| `body_entered` | "有物理体进来了"信号 | `$Area2D.body_entered.connect(...)` |
+| `body_exited` | "有物理体出去了"信号 | 同上 |
 
 ## 对应到 Canvas 版 demo
 
@@ -158,6 +195,7 @@ move_and_slide()                            # 走，撞到就停
 | `UI` (CanvasLayer) | `#dialogue` / HUD |
 | `_physics_process` | 每帧 `loop(dt)` |
 | `Input.is_action_pressed` | `keys[...]` 键位表 |
+| NPC 的 `Area2D` 感应圈 | 距离判断（`Math.abs(npc.x - player.x) < 40`） |
 
 ## AI 协作环境（godot-mcp，已配好）
 
@@ -173,4 +211,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）——第三课完成 ✅
 - [x] 输入映射（Input Map，A/D/E 命名动作）——第四课完成 ✅
 - [x] 碰撞：NPC 也带碰撞盒，玩家不能穿人 —— 第五课完成 ✅
+- [x] 感应区：Area2D 替代"距离土办法"触发交谈 —— 第六课完成 ✅
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
