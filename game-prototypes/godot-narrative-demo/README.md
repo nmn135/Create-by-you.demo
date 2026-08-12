@@ -7,26 +7,53 @@
 1. Godot 4.7.1 在：`D:\EDGE\Godot_v4.7.1-stable_win64.exe\Godot_v4.7.1-stable_win64.exe`
 2. 打开 Godot → **项目管理器 → 导入** → 选中本文件夹的 `project.godot`
 3. 打开项目后按 **F5** 运行
-4. 操作：**← → / A D** 左右移动（暂时只有左右，和 Canvas 版一致）
+4. 操作：**← → / A D** 左右移动（暂时只有左右，和 Canvas 版一致）；靠近 NPC 时按 **E** 打招呼（对话面板下节课做）
 
-## 这个场景树长什么样（核心课）
+## 第一课 · 场景树长什么样（核心课）
 
 打开 `scenes/main.tscn`，看左上角"场景"面板——这就是一棵树：
 
 ```
-Main (Node2D)                        ← 根节点：整个场景就是这棵树
-├── Background (ColorRect)           ← 夜空背景（一个填满 320×180 的色块节点）
-├── Ground (ColorRect)               ← 地面线（y=158）
-├── ClockTower (ColorRect)           ← 钟楼（占位色块，对应 BELL_POS.x=160）
-├── Bell (ColorRect)                 ← 那口钟（占位色块）
-└── Player (CharacterBody2D)         ← 玩家：带脚本的物理体
-    └── CollisionShape2D             ← 玩家的碰撞盒（12×16）
+Main (Node2D)                          ← 根节点：整个场景就是这棵树
+├── Background (ColorRect)             ← 夜空背景（一个填满 320×180 的色块节点）
+├── Ground (ColorRect)                 ← 地面线（y=158）
+├── ClockTower (ColorRect)             ← 钟楼（占位色块，对应 BELL_POS.x=160）
+├── Bell (ColorRect)                   ← 那口钟（占位色块）
+├── Mayor (NPC)                        ← 市长：npc.tscn 的实例 #1
+├── Pawn (NPC)                         ← 当铺老板：npc.tscn 的实例 #2
+├── Bard (NPC)                         ← 说书人：npc.tscn 的实例 #3
+├── Player (CharacterBody2D)           ← 玩家：带脚本的物理体
+│   └── CollisionShape2D               ← 玩家的碰撞盒（12×16）
+└── UI (CanvasLayer)                   ← 界面层：永远盖在最上面
+    └── Prompt (Label)                 ← "E 交谈"提示文字
 ```
 
 **三个要点：**
 1. **一切都是节点**——背景、地面、钟楼、钟，连玩家，全是一个个节点，靠父子关系组成一棵树。
 2. **脚本挂节点**——`player.gd` 挂在 Player 上，`_physics_process()` 每帧跑，改 `velocity` 再 `move_and_slide()` 就是移动。
-3. **谁在上谁先画**——场景面板里**排在上面的节点画在最底层**（Background 在最底下），顺序就是绘制顺序。
+3. **谁在上谁先画**——场景面板里**排在上面的节点画在最底层**（Background 在最底下），顺序就是绘制顺序；而 `UI (CanvasLayer)` 是特殊的"图层"，不管排在哪都画在最上面。
+
+## 第二课 · 场景实例化：种出会走路的 NPC
+
+**核心概念：一个场景 = 一棵可复用的树。** 先写好 `npc.tscn`（一棵只有一个节点、挂着 `npc.gd` 的小树），然后在 `main.tscn` 里用 `instance=` **种三次**，就是三个 NPC。改一次脚本，三个人同时生效——这就是 Godot 做"复制粘贴对象"的正规方式。
+
+每个 NPC 都长这样：
+
+```
+Mayor (NPC)                     ← npc.tscn 的实例
+├── npc_name = "市长"            ← @export 变量：选中节点，右边 Inspector 面板直接改
+├── stations = [(52,150), (150,150), (208,150)]   ← 巡逻站点
+├── speed / dwell               ← 走路速度 / 到站停留秒数
+└── body_color                  ← 衣服颜色
+```
+
+在脚本里新学到的四招：
+1. **`@export`**——`@export var speed := 32.0` 会出现在 Inspector 面板里，不写代码就能调参数。选中 `Mayor` 节点，看右边面板，改改 `dwell` 再 F5 试试。
+2. **`move_toward()`**——匀速挪向目标，一次只挪一格、不会"飞过去"：`position.x = move_toward(position.x, target.x, speed * delta)`。
+3. **计时器写法**——`_waiting` 到站后倒数，减到 0 才继续走（`_process(delta)` 里 `_waiting -= delta`）。
+4. **组（group）**——NPC 在 `_ready()` 里 `add_to_group("npcs")`，玩家在 `player.gd` 里 `get_tree().get_nodes_in_group("npcs")` 就能找到他们。这是 Godot 给"同类对象"贴的标签。
+
+玩家的新花样：`@onready var _prompt: Label = get_node("../UI/Prompt")` —— **等树就绪**再取引用，`../` 表示父节点；`_unhandled_input()` 接住 E 键事件（`InputEventKey`，`physical_keycode == KEY_E`）。靠近 NPC 时底部弹出提示，按 E 会得到一句"对话面板下节课做"的占位回应。
 
 ## 对应到 Canvas 版 demo
 
@@ -34,13 +61,16 @@ Main (Node2D)                        ← 根节点：整个场景就是这棵树
 |---|---|
 | `Main` 根节点 | `SCENES` 状态机 + 主循环 |
 | `Player` + `player.gd` | `player` 对象 + 主循环里左右移动那段 |
+| `Mayor`/`Pawn`/`Bard` (NPC) | `npcs[]` + `drawNPC()`/站点巡游 |
+| `npc.gd` 的 `stations` | `npc.stations` 站点数组 |
 | `ClockTower`/`Bell` 色块 | `BELL_POS`/`drawBell()` |
+| `UI` (CanvasLayer) | `#dialogue` / HUD |
 | `_physics_process` | 每帧 `loop(dt)` |
 | `Input.is_action_pressed` | `keys[...]` 键位表 |
 
 ## 下一步（学完这些再往上加）
 
+- [ ] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）——下节课：按 E 弹出对话面板
+- [ ] 输入映射（Input Map，把 A/D/E 也定义成动作，替换物理键直查）
+- [ ] 碰撞：NPC 也带碰撞盒，玩家不能穿人
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
-- [ ] NPC 节点 + 站点巡游（对应 `npcs[]`）
-- [ ] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）
-- [ ] 输入映射（Input Map，把 A/D 也定义成动作，替换物理键直查）

@@ -1,13 +1,16 @@
 extends CharacterBody2D
 ## 玩家 —— 第七天里的外乡人（占位像素小人）
 ##
-## 这是一个"脚本挂在节点上"的例子：
-##   1. 这个脚本挂在 Main 场景里的 Player 节点上（看 scenes/main.tscn）
-##   2. Player 是 CharacterBody2D：Godot 的"会移动的物理体"
-##   3. 脚本用 _physics_process() 每帧改 velocity，再 move_and_slide()
-##   4. 像素小人是用 _draw() 画的（先画个占位，之后换像素图）
+## 这节课新增（结合"场景树"一起看）：
+##   1. @onready：等树准备好了再取节点引用（get_node 相对路径）
+##   2. _process：每帧刷新提示文字
+##   3. _unhandled_input：处理"没人接手的"输入事件（E 键）
+##   4. 组（group）：get_nodes_in_group("npcs") 找到所有 NPC
 
 const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一致
+
+# ../ 表示"父节点"（Main），所以这是 Main/UI/Prompt —— 屏幕底部那个提示
+@onready var _prompt: Label = get_node("../UI/Prompt")
 
 func _physics_process(_delta: float) -> void:
 	# 输入：←/→ 用 Godot 内置动作，A/D 直接查物理键
@@ -18,6 +21,37 @@ func _physics_process(_delta: float) -> void:
 		dir += 1.0
 	velocity.x = dir * SPEED
 	move_and_slide()
+
+func _process(_delta: float) -> void:
+	_update_prompt()
+
+func _unhandled_input(event: InputEvent) -> void:
+	# E 键：物理键直查（输入映射下节课再讲）
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode == KEY_E and _prompt.visible:
+		var npc := _nearest_npc()
+		if npc:
+			_prompt.text = "对话面板下节课做！" + npc.npc_name + " 在等你"
+
+func _update_prompt() -> void:
+	# 离最近的 NPC 足够近 → 亮出"E 交谈"，并显示对方名字
+	var npc := _nearest_npc()
+	if npc and abs(npc.position.x - position.x) < 20.0:
+		_prompt.text = "E 交谈 · " + npc.npc_name
+		_prompt.visible = true
+	else:
+		_prompt.visible = false
+
+func _nearest_npc() -> Node2D:
+	# 遍历 "npcs" 组里的所有节点，找横向距离最近的
+	var best: Node2D = null
+	var best_d := INF
+	for n in get_tree().get_nodes_in_group("npcs"):
+		var d: float = abs(n.position.x - position.x)
+		if d < best_d:
+			best_d = d
+			best = n
+	return best
 
 func _draw() -> void:
 	# 占位像素小人：蓝衣 + 头 + 腰带 + 脚（和 Canvas 版同一套配色）
