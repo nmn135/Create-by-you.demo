@@ -7,7 +7,7 @@
 1. Godot 4.7.1 在：`D:\EDGE\Godot_v4.7.1-stable_win64.exe\Godot_v4.7.1-stable_win64.exe`
 2. 打开 Godot → **项目管理器 → 导入** → 选中本文件夹的 `project.godot`
 3. 打开项目后按 **F5** 运行
-4. 操作：**← → / A D** 左右移动（暂时只有左右，和 Canvas 版一致）；靠近 NPC 时按 **E** 打招呼（对话面板下节课做）
+4. 操作：**← → / A D** 左右移动；靠近 NPC 按 **E**（或空格）打招呼、再按推进对话
 
 ## 第一课 · 场景树长什么样（核心课）
 
@@ -102,6 +102,28 @@ event.is_action_pressed("interact")     # 事件类输入（_unhandled_input）
 
 **改键位的地方**：项目 → 项目设置 → 输入映射。改完不用动代码。⚠️ 改过 `project.godot` 后要**完全退出项目重开**，编辑器才会重新读。
 
+## 第五课 · 碰撞：撞不动，才像活着
+
+让 NPC 从"穿得过的一张贴图"变成"有实体的活人"——玩家走不进 NPC 身体里。
+
+**三个新概念：**
+
+1. **碰撞盒 `CollisionShape2D`** —— 贴在物理体上的"皮肤"，决定占多大面积。玩家身上早就有（12×16 的蓝色框）；这一课给 NPC 也加了一个（10×14，比小人略小一圈，手感更好）。
+2. **碰撞层 / 掩码（layer / mask）** —— 游戏物理里最重要的两个数：
+   - `layer`（第几层）= 我是谁
+   - `mask`（撞谁）= 我会撞到哪些层
+   - 玩家 `layer=1` `mask=2`（撞第 2 层 = NPC）；NPC `layer=2` `mask=0`（谁都不撞 → 四个 NPC 不会互挤成一坨）
+3. **物理体移动套路** —— 会动的物体统一走：`velocity = 方向 × 速度` + `move_and_slide()`，且必须在 `_physics_process()`（固定 60 次/秒的物理帧）里跑。NPC 从 `Node2D` 升级成 `CharacterBody2D` 后，和玩家共用同一套 API。
+
+```gdscript
+velocity = to_target.normalized() * speed   # 想往哪走、走多快
+move_and_slide()                            # 走，撞到就停
+```
+
+**课后自己动手试：**
+- 选中任一 NPC → Inspector 里把 `collision_layer` 改成 1、`collision_mask` 改成 1，F5 看看会发生什么（提示：NPC 开始"堵车"）
+- 选中 NPC 下的 `CollisionShape2D`，在场景视图里拖那个蓝色框，调大调小试试手感
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -118,6 +140,11 @@ event.is_action_pressed("interact")     # 事件类输入（_unhandled_input）
 | Scene | 场景面板（左上） | 场景树在这 |
 | Input Map | 输入映射（键位表） | 项目 → 项目设置 → 输入映射 |
 | `is_action_pressed` | "这个动作被按了吗？" | 代码里（`Input.` 或 `event.`） |
+| `CollisionShape2D` | 碰撞盒（身体的"皮肤"） | 物理体下面的子节点，设 `shape` |
+| `collision_layer` | 我是第几层 | Inspector → 节点 → 碰撞 |
+| `collision_mask` | 我会撞到哪些层 | 同上 |
+| `_physics_process` | 物理帧（固定 60 次/秒） | 物理体的移动放这 |
+| `move_and_slide()` | "走，撞到就停" | 物理体每帧最后调用 |
 
 ## 对应到 Canvas 版 demo
 
@@ -145,5 +172,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 
 - [x] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）——第三课完成 ✅
 - [x] 输入映射（Input Map，A/D/E 命名动作）——第四课完成 ✅
-- [ ] 碰撞：NPC 也带碰撞盒，玩家不能穿人
+- [x] 碰撞：NPC 也带碰撞盒，玩家不能穿人 —— 第五课完成 ✅
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
