@@ -160,6 +160,40 @@ func _nearby_npc() -> Node2D:
 
 **课后自己动手试**：选中任一 NPC → 展开 `Area2D` → 选中它的 `CollisionShape2D`，在场景视图里把感应圈**拖大拖小**，感受"多大范围才弹 E 提示"。
 
+## 第七课 · 对话分支：说话有了岔路口
+
+普通对话是一字排开往下说；这课给对话加上"岔路口"——说到最后一句，弹出几个选项，你选哪个就接哪句话。
+
+**数据格式升级**：每个 NPC 多了一个 `options`（选项数组），每个选项是一个**字典（Dictionary）**：
+
+```gdscript
+options = [
+	{ "label": "讲讲刻痕", "reply": "头一道刻痕落下的那夜，钟楼第一次没响。" },
+	{ "label": "告辞",     "reply": "我讲的故事里，命都改写过。" },
+]
+```
+
+- `label` = 屏幕上选项按钮的文字
+- `reply` = 点了之后对方接的话
+
+**三个新招：**
+
+1. **字典 `Dictionary`** —— `{ 键: 值 }` 的小盒子，一个格子能装"一组"信息（这里是一对 label/reply）。
+2. **动态生成按钮** —— 选项是开会时"现造"的：
+   ```gdscript
+   for opt in _options:
+       var btn := Button.new()
+       btn.text = str(opt.get("label", "……"))
+       btn.pressed.connect(_on_choice_pressed.bind(opt))
+       _choices.add_child(btn)
+   ```
+   `Button.new()` 在代码里造按钮，`add_child` 挂到界面上；`bind(opt)` 把"这是哪个选项"一起传给回调。
+3. **用完清理** —— 每次开会前把旧按钮 `remove_child` + `queue_free` 掉，否则越攒越多。
+
+**流程**：主台词 → 最后一句 → 出选项 → 点了 → 显示 reply → "告辞" 关面板。E 键在有选项等待时会先失效（防止一路按 E 把面板按没）。
+
+**课后动手**：在 Inspector 里选一个 NPC → 展开 `options` → 改 `label` / `reply` 的文字，或 Add Element 加新选项。
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -184,6 +218,9 @@ func _nearby_npc() -> Node2D:
 | `Area2D` | 感应区（透明，不挡路） | 挂在身上，检测"谁进来了" |
 | `body_entered` | "有物理体进来了"信号 | `$Area2D.body_entered.connect(...)` |
 | `body_exited` | "有物理体出去了"信号 | 同上 |
+| `Dictionary` | 字典（{键: 值} 小盒子） | `{ "label": "问刻痕", "reply": "……" }` |
+| `Button.new()` | 代码里造一个新按钮 | 循环里动态生成 UI |
+| `opt.get("key", 默认值)` | 取字典里的值，没有就返回默认 | `opt.get("label", "……")` |
 
 ## 对应到 Canvas 版 demo
 
@@ -198,6 +235,7 @@ func _nearby_npc() -> Node2D:
 | `_physics_process` | 每帧 `loop(dt)` |
 | `Input.is_action_pressed` | `keys[...]` 键位表 |
 | NPC 的 `Area2D` 感应圈 | 距离判断（`Math.abs(npc.x - player.x) < 40`） |
+| `options`（Array[Dictionary]） | 话题快捷栏（节点分支对话 v1） |
 
 ## AI 协作环境（godot-mcp，已配好）
 
@@ -214,4 +252,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 输入映射（Input Map，A/D/E 命名动作）——第四课完成 ✅
 - [x] 碰撞：NPC 也带碰撞盒，玩家不能穿人 —— 第五课完成 ✅
 - [x] 感应区：Area2D 替代"距离土办法"触发交谈 —— 第六课完成 ✅
+- [x] 对话分支：选项 + 动态按钮 —— 第七课完成 ✅
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
