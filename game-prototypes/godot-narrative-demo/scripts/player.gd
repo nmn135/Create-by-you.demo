@@ -41,7 +41,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		var npc := _nearby_npc()
 		if npc:
-			_dialogue.open(npc.npc_name, npc.lines)
+			_dialogue.open(npc.npc_name, npc.lines, npc.options)
 
 func _update_prompt() -> void:
 	# 第六课：有人感应到我 → 亮出"E 交谈"，并显示对方名字

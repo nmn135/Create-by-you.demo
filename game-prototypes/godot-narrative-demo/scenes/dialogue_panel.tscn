@@ -31,6 +31,10 @@ theme_override_font_sizes/font_size = 12
 text = "……"
 autowrap_mode = 2
 
+[node name="Choices" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+visible = false
+
 [node name="Next" type="Button" parent="VBox"]
 layout_mode = 2
 text = "继续 [E]"

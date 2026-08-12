@@ -17,6 +17,7 @@ extends CharacterBody2D
 @export var speed := 32.0   # 像素/秒
 @export var dwell := 2.5    # 到站后停留秒数
 @export var lines: Array[String] = ["……"]   # 台词（第三课：对话面板）
+@export var options: Array[Dictionary] = []   # 第七课：分支选项 [{label, reply}]
 
 var _target_index := 0
 var _waiting := 0.0
