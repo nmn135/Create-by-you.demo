@@ -15,11 +15,12 @@ const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一
 @onready var _dialogue: PanelContainer = get_node("../UI/DialoguePanel")
 
 func _physics_process(_delta: float) -> void:
-	# 输入：←/→ 用 Godot 内置动作，A/D 直接查物理键
+	# 第四课：输入映射。代码不再管具体键，只问"这个动作被按了吗"
+	# A/← 绑在 move_left，D/→ 绑在 move_right（Project → 项目设置 → 输入映射里改）
 	var dir := 0.0
-	if Input.is_action_pressed("ui_left") or Input.is_physical_key_pressed(KEY_A):
+	if Input.is_action_pressed("move_left"):
 		dir -= 1.0
-	if Input.is_action_pressed("ui_right") or Input.is_physical_key_pressed(KEY_D):
+	if Input.is_action_pressed("move_right"):
 		dir += 1.0
 	velocity.x = dir * SPEED
 	move_and_slide()
@@ -28,11 +29,10 @@ func _process(_delta: float) -> void:
 	_update_prompt()
 
 func _unhandled_input(event: InputEvent) -> void:
-	# E 键：物理键直查（输入映射以后再讲）
-	if event is InputEventKey and event.pressed and not event.echo \
-			and event.physical_keycode == KEY_E:
+	# 第四课：interact 动作（默认绑 E；以后在输入映射里改成别的键即可）
+	if event.is_action_pressed("interact"):
 		if _dialogue.visible:
-			_dialogue.advance()  # 对话开着 → E 当"下一句"
+			_dialogue.advance()  # 对话开着 → interact 当"下一句"
 			return
 		var npc := _nearest_npc()
 		if npc and _prompt.visible:
