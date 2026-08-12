@@ -57,7 +57,6 @@ lines = Array[String](["圣火七天不灭。", "神不回应，但钟会。", "
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=667611577]
 position = Vector2(40, 150)
-collision_layer = 1
 collision_mask = 2
 script = ExtResource("1_player")
 
