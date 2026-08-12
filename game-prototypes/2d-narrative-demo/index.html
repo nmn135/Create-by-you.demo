@@ -50,6 +50,7 @@
   #dlg-log { height:76px; overflow-y:auto; font-size:12px; color:#aaa; margin:6px 0; }
   #dlg-log .you { color:#8fd0ff; }
   #dlg-log .npc { color:#ffd78c; }
+  #dlg-log .recap { color:#777; font-size:11px; border-left:2px solid #444; padding-left:6px; margin:2px 0 6px; }
   #dlg-current { min-height:40px; font-size:15px; line-height:1.5; color:#eee; }
   #dlg-current .caret { display:inline-block; width:7px; background:#8fd0ff; color:transparent; animation:blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity:0; } }
@@ -133,6 +134,10 @@ canvas.height = H * RENDER_SCALE;
 // ---------- 资源 ----------
 const bg = new Image();
 bg.src = 'bg.png';
+// 第二天正式场景图（可选）：存在 bg_day2.png 就自动使用；缺失时回退 bg.png + 程序化元素
+const bgDay2 = new Image();
+bgDay2.src = 'bg_day2.png';
+function day2ArtReady() { return bgDay2.complete && bgDay2.naturalWidth > 0; }
 
 // ---------- 世界状态 ----------
 const world = {
@@ -142,6 +147,7 @@ const world = {
   sceneTone: 'normal',   // normal | warm | hostile | night
   doorVisible: false,
   metaTriggered: false,
+  scene: 'day7',         // 场景：day7=第七天 | day2=第二天（刻痕2 后）
   reputation: 0,         // 全局名声 -10~10
 };
 
@@ -179,6 +185,8 @@ for (const id of Object.keys(NPC_DEFS)) {
     heard: new Set(),     // 听过的玩家的话
     ohTimer: 0,           // "!" 反馈倒计时
     bubble: null,         // 闲聊气泡 {text, ttl}
+    lastReply: null,          // 上次对话他最后说的话（随存档保存）
+    lastPlayerLine: null,     // 上次对话玩家最后说的话
   };
 }
 // 初始关系（依据设定）
@@ -232,6 +240,8 @@ function saveGame() {
         rel: { ...n.rel },
         heard: [...n.heard].slice(-8),
         x: Math.round(n.x), sIdx: n.sIdx,
+        lastReply: n.lastReply || null,
+        lastPlayerLine: n.lastPlayerLine || null,
       };
     }
     const s = {
@@ -254,10 +264,19 @@ function loadGame() {
   if (!raw) return false;
   let s; try { s = JSON.parse(raw); } catch (e) { return false; }
   if (!s || typeof s !== 'object' || s.version !== SAVE_VERSION) return false;
-  // world（const → 原地变异）
+  // world（const → 原地变异）。先重置为默认，避免旧档缺字段时残留上次加载的 scene 等状态
+  world.scene = 'day7';
+  world.dayCycle = 7;
+  world.bellStruck = false;
+  world.gossipLevel = 0;
+  world.sceneTone = 'normal';
+  world.doorVisible = false;
+  world.metaTriggered = false;
+  world.reputation = 0;
   Object.assign(world, s.world || {});
   world.reputation = clamp(Number(world.reputation) || 0, -10, 10);
   world.dayCycle = Number(world.dayCycle) || 7;
+  if (!SCENES[world.scene]) world.scene = 'day7';   // 旧档/非法值回退
   // npcs
   for (const id of Object.keys(NPC_DEFS)) {
     const n = npcs[id], sn = (s.npcs && s.npcs[id]) || {};
@@ -269,6 +288,16 @@ function loadGame() {
       n.dwell = n.def.stations[n.sIdx].dwell;
     }
     n.bubble = null; n.ohTimer = 0;
+    n.lastReply = (typeof sn.lastReply === 'string' && sn.lastReply) ? sn.lastReply : null;
+    n.lastPlayerLine = (typeof sn.lastPlayerLine === 'string' && sn.lastPlayerLine) ? sn.lastPlayerLine : null;
+  }
+  // 记忆气泡：载档后 NPC 把上次的话挂在嘴边（限时，方便重连记忆）
+  for (const id of Object.keys(npcs)) {
+    const n = npcs[id];
+    if (n.lastReply) {
+      const s = n.lastReply.length > 26 ? n.lastReply.slice(0, 26) + '…' : n.lastReply;
+      n.bubble = { text: s, ttl: 8 };
+    }
   }
   // facts
   facts.length = 0;
@@ -485,24 +514,85 @@ function drawDoor() {
   ctx.fillRect(147, GROUND - 14, 1, 1);
 }
 
-function drawMoon() {
-  ctx.fillStyle = '#f2f0d8';
+function drawMoon(c1, c2) {
+  ctx.fillStyle = c1 || '#f2f0d8';
   ctx.fillRect(262, 14, 8, 8);
-  ctx.fillStyle = '#d8d6c0';
+  ctx.fillStyle = c2 || '#d8d6c0';
   ctx.fillRect(264, 18, 3, 3);
+}
+
+// ---------- 场景框架：day7=第七天（默认） | day2=第二天（刻痕2 后） ----------
+const SCENES = {
+  day7: {
+    label: '第七天',
+    tint: null,
+    draw() { if (world.sceneTone === 'night' || world.doorVisible) drawMoon(); },
+  },
+  day2: {
+    label: '第二天',
+    tint: 'rgba(26,22,40,0.34)',   // 暮色；有正式 bg_day2.png 后自动关闭
+    draw() { drawMoon('#c8a888', '#a89878'); drawCrack(); drawGraffiti(); drawPosters(); drawPapers(); },
+  },
+};
+
+// 钟楼裂痕（刻痕的视觉化）
+function drawCrack() {
+  ctx.fillStyle = '#150e16';
+  ctx.fillRect(162, 38, 1, 3);
+  ctx.fillRect(161, 41, 1, 2); ctx.fillRect(163, 42, 1, 2);
+  ctx.fillRect(162, 44, 1, 4);
+  ctx.fillRect(161, 48, 1, 2); ctx.fillRect(164, 49, 1, 2);
+  ctx.fillRect(162, 51, 1, 3);
+  ctx.fillStyle = '#2a1a22';
+  ctx.fillRect(162, 40, 1, 1); ctx.fillRect(162, 46, 1, 1);
+}
+
+// 墙上红痕涂鸦（秘密开始流传）
+function drawGraffiti() {
+  ctx.fillStyle = '#7a2222';
+  ctx.fillRect(156, 74, 9, 1);
+  ctx.fillRect(157, 76, 7, 1);
+  ctx.fillRect(159, 78, 4, 1);
+  ctx.fillRect(155, 81, 1, 3); ctx.fillRect(165, 81, 1, 3);
+  ctx.fillRect(205, 56, 1, 7); ctx.fillRect(207, 57, 1, 6);
+  ctx.fillRect(209, 56, 1, 7); ctx.fillRect(211, 58, 1, 5);
+  ctx.fillRect(213, 57, 1, 6);
+  ctx.fillRect(247, 62, 7, 1); ctx.fillRect(249, 64, 5, 1); ctx.fillRect(251, 66, 3, 1);
+  // 一只红眼睛（说书人的记号）
+  ctx.fillStyle = '#8a2e2e';
+  ctx.fillRect(150, 88, 5, 3); ctx.fillRect(151, 87, 3, 1); ctx.fillRect(151, 91, 3, 1);
+  ctx.fillStyle = '#4a1212'; ctx.fillRect(152, 89, 1, 1);
+}
+
+// 墙上新贴的告示
+function drawPosters() {
+  ctx.fillStyle = '#cfc4a0';
+  ctx.fillRect(166, 58, 4, 6); ctx.fillRect(202, 48, 4, 6); ctx.fillRect(244, 54, 4, 6);
+  ctx.fillStyle = '#a03030';
+  ctx.fillRect(168, 59, 1, 1); ctx.fillRect(204, 49, 1, 1); ctx.fillRect(246, 55, 1, 1);
+}
+
+// 地上散落的传单
+function drawPapers() {
+  ctx.fillStyle = '#c9c2ab';
+  ctx.fillRect(60, 152, 2, 2); ctx.fillRect(96, 154, 2, 2); ctx.fillRect(180, 153, 2, 2);
+  ctx.fillRect(232, 151, 2, 2); ctx.fillRect(286, 154, 2, 2); ctx.fillRect(132, 155, 2, 2);
 }
 
 // ---------- 场景 ----------
 function drawScene() {
   ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(bg, 0, 0, W, H);
+  const sc = SCENES[world.scene] || SCENES.day7;
+  const artReady = world.scene === 'day2' && day2ArtReady();   // 有正式 bg_day2.png 就用它
+  ctx.drawImage(artReady ? bgDay2 : bg, 0, 0, W, H);
+  if (sc.tint && !artReady) { ctx.fillStyle = sc.tint; ctx.fillRect(0, 0, W, H); }
   const tone = world.sceneTone;
   if (tone === 'warm') { ctx.fillStyle = 'rgba(255,180,80,0.15)'; ctx.fillRect(0, 0, W, H); }
   else if (tone === 'hostile') { ctx.fillStyle = 'rgba(160,20,20,0.28)'; ctx.fillRect(0, 0, W, H); }
   else if (tone === 'night') { ctx.fillStyle = 'rgba(15,25,70,0.5)'; ctx.fillRect(0, 0, W, H); }
   if (world.gossipLevel) { ctx.fillStyle = 'rgba(180,190,210,0.10)'; ctx.fillRect(0, 0, W, H); }
-  if (tone === 'night' || world.doorVisible) drawMoon();
+  if (sc.draw && !artReady) sc.draw();                          // 场景专属元素（有正式图则跳过）
   if (world.bellStruck || bell.active) drawBell();
   if (world.doorVisible) drawDoor();
   for (const id of Object.keys(npcs)) drawNpc(npcs[id]);
@@ -539,9 +629,10 @@ function tickGossip(dt) {
     const na = npcs[ids[a]], nb = npcs[ids[b]];
     const key = ids[a] + '|' + ids[b];
     const dist = Math.abs(na.x - nb.x);
+    const gossipT = world.scene === 'day2' ? 1.1 : 2.2;   // 第二天：流言传得更快
     if (dist < 34 && !na.bubble && !nb.bubble) {
       coLoc[key] = (coLoc[key] || 0) + dt;
-      if (coLoc[key] > 2.2) { coLoc[key] = -4; doGossip(na, nb); }
+      if (coLoc[key] > gossipT) { coLoc[key] = -4; doGossip(na, nb); }
     } else if (dist >= 34) { coLoc[key] = 0; }
   }
 }
@@ -553,7 +644,7 @@ function doGossip(a, b) {
   // 没有共享事实 → 氛围闲聊
   const ambient = {
     mayor: ['（清了清嗓子）第七天，一切如常。', '（整了整怀表链）秩序，就是一切。'],
-    pawn: ['（拨了拨算盘）没有东西比话更值钱。', '（眯眼）进来就是客，您要当点什么？'],
+    pawn: ['（拨了拨算盘）没有东西比话更值钱。', '（眯眼）进来就是客，您要当点什么？', '（低声）捂在怀里的秘密一文不值，说出去的才有人出价。'],
     bard: ['（哼着不成调的歌）城里没有第八天…', '（笑着看空气）听得懂的人，还没来。'],
   };
   const pool = ambient[a.id] || [];
@@ -586,7 +677,7 @@ function updateHud() {
     const n = npcs[id];
     return '<span>' + n.def.name + '·' + loc(id) + ' <span class="r">[' + relLabel(n.rel) + ']</span></span>';
   }).join('');
-  hudScene.textContent = '第七天 · 循环 ' + world.dayCycle + (world.bellStruck ? ' · 钟已破' : '') + (world.gossipLevel ? ' · 流言' : '');
+  hudScene.textContent = (SCENES[world.scene] || SCENES.day7).label + ' · 循环 ' + world.dayCycle + (world.bellStruck ? ' · 钟已破' : '') + (world.gossipLevel ? ' · 流言' : '');
   hudRep.textContent = (world.reputation > 0 ? '+' : '') + world.reputation;
   hudRep.className = world.reputation > 0 ? 'pos' : world.reputation < 0 ? 'neg' : '';
 }
@@ -650,6 +741,13 @@ function openDialogue(id) {
     el('dlg-name').textContent = npc.def.title;
     drawAvatarFor(id);
     dlgInput.placeholder = '试着说点什么…（也可以：把这里烧了 / 我相信你 / 你在骗我）';
+    // 记忆回顾：重开对话时，把上次他最后说的话显示在窗口顶部
+    if (npc.lastReply) {
+      const recap = document.createElement('div');
+      recap.className = 'recap';
+      recap.textContent = (npc.lastPlayerLine ? '上次你说「' + npc.lastPlayerLine + '」' : '上次') + '，' + npc.def.name + '最后说的是：' + npc.lastReply;
+      dlgLog.appendChild(recap);
+    }
     typeReply(greeting(id));
   }
   setTimeout(() => dlgInput.focus(), 50);
@@ -669,6 +767,7 @@ function greeting(id) {
     return '（市长端坐，怀表链垂在胸口，微笑着说）外乡人。第七天一切照旧，本官希望你也一切照旧。';
   }
   if (id === 'pawn') {
+    if (playerSecrets.size > 0 && !world.gossipLevel) return '（当铺老板眯眼，指尖在柜台上敲了两下）你手里那点货，捂在怀里可换不来钱。有些话——说给没听过的人听，才值钱。';
     if (playerSecrets.has('mayor')) return '（当铺老板眯眼，把你上上下下打量一遍）哟，贵客。听说你手上已经有值钱的东西了——这单生意，我们有得谈。';
     if (world.reputation >= 2) return '（当铺老板敲了敲柜台）近来城里都在传你的名字。名声，在行市里可是硬通货。';
     return '（当铺老板从柜台后探出半张脸，三副眼镜叠在一起）欢迎光临。本店不收银钱，只收——话。你带什么来了？';
@@ -765,7 +864,7 @@ async function sendMessage() {
       text,
       history: historyLog.slice(-10),
       metaMode,
-      worldState: { dayCycle: world.dayCycle, bellStruck: world.bellStruck, gossipLevel: world.gossipLevel, sceneTone: world.sceneTone, doorVisible: world.doorVisible },
+      worldState: { dayCycle: world.dayCycle, bellStruck: world.bellStruck, gossipLevel: world.gossipLevel, sceneTone: world.sceneTone, doorVisible: world.doorVisible, scene: world.scene },
       relations: Object.fromEntries(Object.keys(npcs).map(id => [id, npcs[id].rel])),
       heard: npc ? [...npc.heard].slice(-6) : [],
       secretsKnownBy: Object.fromEntries(Object.keys(npcs).map(id => [id, [...secretsKnownBy[id]]])),
@@ -777,6 +876,7 @@ async function sendMessage() {
   const data = res ? await res.json().catch(() => null) : null;
 
   const reply = (data && data.reply) ? data.reply : fallbackReply(partnerId, text);
+  if (npc) { npc.lastReply = reply; npc.lastPlayerLine = text; dirty = true; }
   appendLog(npc ? npc.def.name : '？？？', reply);
   await typeReply(reply);
   setBusy(false);
@@ -909,6 +1009,7 @@ async function triggerScratch2() {
   state = 'cutscene';
   closeDialogue();
   world.gossipLevel = 1;
+  world.scene = 'day2';
   world.dayCycle += 1;
   playBell(0);
   eventOv.classList.add('on');
@@ -1009,6 +1110,7 @@ window.__game = {
   get overhearers() { return [...overhearers]; },
   triggerScratch1, triggerScratch2,
   saveGame, loadGame, clearSave,
+  get lastReplies() { return Object.fromEntries(Object.keys(npcs).map(id => [id, npcs[id].lastReply])); },
   get reputation() { return world.reputation; },
   debugLearnSecret: sid => playerSecrets.add(sid),
   debugApplyDeltas: applyDeltas,

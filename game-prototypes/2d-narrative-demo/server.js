@@ -106,6 +106,9 @@ const SECRETS = {
 const TIER = ['低', '中', '高'];
 const tier = v => TIER[v] || '中';
 
+// 角色 id → 中文名（用于 prompt 锚定 + 舞台指示兜底修正）
+const NPC_NAMES = { mayor: '市长', pawn: '当铺老板', bard: '说书人' };
+
 // 全局名声 → 分段描述（范围 -10~10）
 function repLabel(v) {
   if (v >= 8) return '城中无人不知你的名字';
@@ -155,6 +158,7 @@ function buildSystemPrompt(body) {
     const known = (body.secretsKnownBy && body.secretsKnownBy[npcId]) || [];
     lines.push(known.length ? `你知道的秘密：${known.map(s => SECRETS[s]).join('；')}。` : '你不知道任何角色的秘密。');
     const wsParts = [];
+    if (ws.scene === 'day2') wsParts.push('这是循环结束后的第二天');
     if (ws.dayCycle != null) wsParts.push('循环' + ws.dayCycle + '次');
     if (ws.bellStruck) wsParts.push('钟楼敲过第十三下');
     if (ws.gossipLevel) wsParts.push('城里在传流言');
@@ -166,11 +170,20 @@ function buildSystemPrompt(body) {
   }
 
   lines.push('规则：中文1-4句，保持角色，不跳出。');
+  if (!metaMode) lines.push('角色锚定：你就是「' + (NPC_NAMES[npcId] || npcId) + '」。回复里的动作描写（括号内）必须以你自己的名字或"我"为主语，严禁把市长、当铺老板、说书人等其他角色的名字写成动作主语（除非在转述他人）。');
   lines.push('记忆规则：自然引用你记得的往事或玩家说过的话（"你上次不是说…"），每次最多提1-2条，别机械复述，别一次性全抖出来。');
   lines.push('只输出一个JSON对象，无其它文字：{"reply":"回复","facts":["新事实"],"repDelta":0,"deltas":{"mayor":{"trust":0,"fear":0,"like":0,"suspect":0}},"node":null,"secret":null}');
   lines.push('deltas值只取-1/0/+1，id限mayor/pawn/bard，玩家有明显善意/恶意时至少让trust或suspect动一下，别全是0。repDelta只取-1/0/+1，衡量玩家在整座城的"名声"（范围-10~10），只在出现足以被全城议论的大事时动（当面戳破秘密、公开威胁/拯救某人、煽动全城）；普通闲聊一律为0。node：玩家首句剧本外="scratch1"(若钟未破)；向不知道某秘密的人泄密="scratch2"。secret：愿告知秘密则填所属者id(mayor/pawn/bard)，否则null。');
 
   return lines.join('\n');
+}
+
+// 舞台指示角色修正：模型偶尔把其他角色名写成动作主语（如说书人回话写成"市长…"），兜底换回当前 NPC 名
+function fixStageDir(reply, npcName) {
+  if (!reply || !npcName) return reply;
+  const m = reply.match(/^（\s*(市长|当铺老板|说书人)/);
+  if (m && m[1] !== npcName) return '（' + npcName + reply.slice(m[0].length);
+  return reply;
 }
 
 function parseJson(content) {
@@ -215,7 +228,7 @@ async function talk(body) {
   const clampInt = v => (v === undefined || v === null) ? 0 : Math.max(-1, Math.min(1, Math.round(Number(v) || 0)));
   if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
     return {
-      reply: parsed.reply.trim(),
+      reply: fixStageDir(parsed.reply.trim(), NPC_NAMES[body.npc]),
       facts: Array.isArray(parsed.facts) ? parsed.facts : [],
       deltas: parsed.deltas || {},
       repDelta: clampInt(parsed.repDelta),
@@ -225,7 +238,7 @@ async function talk(body) {
     };
   }
   // 兜底：把原文当回复
-  return { reply: content.trim() || '…', facts: [], deltas: {}, repDelta: 0, node: null, secret: null, offline: false };
+  return { reply: fixStageDir(content.trim() || '…', NPC_NAMES[body.npc]), facts: [], deltas: {}, repDelta: 0, node: null, secret: null, offline: false };
 }
 
 const server = http.createServer(async (req, res) => {
