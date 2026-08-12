@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>封印之殿 · 像素叙事 Demo</title>
+<link rel="icon" href="data:,">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#000; overflow:hidden; font-family: 'Courier New', monospace; color:#d8d8d8; }
+  #wrap { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; }
+  #game {
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: auto;
+    image-rendering: pixelated;
+    background:#0a0a12;
+    border:1px solid #222;
+  }
+  /* HUD */
+  #hud {
+    position:fixed; top:10px; left:50%; transform:translateX(-50%);
+    pointer-events:none; font-size:13px; letter-spacing:1px; z-index:5;
+    background:rgba(0,0,0,.55); padding:6px 14px; border:1px solid #444;
+    text-shadow:1px 1px 0 #000;
+  }
+  #hud b { color:#ffd78c; }
+  /* 底部操作提示 */
+  #banner {
+    position:fixed; bottom:8px; left:50%; transform:translateX(-50%);
+    font-size:12px; color:#999; pointer-events:none; z-index:4;
+    text-shadow:1px 1px 0 #000;
+  }
+  /* 对话面板 */
+  #dialogue {
+    position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+    width:min(94vw, 880px); background:rgba(10,10,18,.92);
+    border:2px solid #6a6a6a; border-bottom:none; padding:10px 14px;
+    z-index:10; display:none;
+  }
+  #dialogue.open { display:block; }
+  #dlg-head { display:flex; align-items:center; gap:10px; border-bottom:1px solid #333; padding-bottom:6px; }
+  #dlg-avatar { width:30px; height:30px; background:#3b6ea5; border:1px solid #888; image-rendering:pixelated; }
+  #dlg-name { font-size:16px; color:#ffd78c; font-weight:bold; }
+  #dlg-close { margin-left:auto; font-size:11px; color:#777; }
+  #dlg-log { height:76px; overflow-y:auto; font-size:12px; color:#aaa; margin:6px 0; }
+  #dlg-log .you { color:#8fd0ff; }
+  #dlg-log .npc { color:#ffd78c; }
+  #dlg-current { min-height:40px; font-size:15px; line-height:1.5; color:#eee; }
+  #dlg-current .caret { display:inline-block; width:7px; background:#8fd0ff; color:transparent; animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  #dlg-input-row { display:flex; gap:8px; margin-top:8px; }
+  #dlg-input {
+    flex:1; background:#0d0d18; border:1px solid #555; color:#eee;
+    padding:8px 10px; font-size:14px; font-family:'Courier New',monospace; outline:none;
+  }
+  #dlg-input:focus { border-color:#ffd78c; }
+  #dlg-send {
+    background:#2a2a3a; color:#ffd78c; border:1px solid #666; padding:0 18px;
+    font-size:14px; cursor:pointer; font-family:'Courier New',monospace;
+  }
+  #dlg-send:hover { background:#3a3a4a; }
+  #dlg-send:disabled { color:#666; cursor:default; }
+  /* 终端 / 元模式 */
+  #terminal {
+    position:fixed; inset:0; background:#000; z-index:30; display:none;
+    padding:8vh 6vw; font-family:'Courier New',monospace; color:#33ff66;
+    font-size:18px; line-height:1.7; white-space:pre-wrap;
+  }
+  #terminal.open { display:block; }
+  #flash {
+    position:fixed; inset:0; background:#fff; z-index:40; display:none; pointer-events:none;
+  }
+  #flash.on { display:block; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="320" height="180"></canvas></div>
+<div id="hud">场景：<b id="hud-scene">黄昏</b> &nbsp;|&nbsp; 老罗：<b id="hud-rel">中立</b></div>
+<div id="banner">← → 移动 &nbsp;·&nbsp; E 交谈 &nbsp;·&nbsp; 走近老罗试试</div>
+
+<div id="dialogue">
+  <div id="dlg-head">
+    <canvas id="dlg-avatar" width="30" height="30"></canvas>
+    <span id="dlg-name">老罗</span>
+    <span id="dlg-close">ESC 离开</span>
+  </div>
+  <div id="dlg-log"></div>
+  <div id="dlg-current"></div>
+  <div id="dlg-input-row">
+    <input id="dlg-input" maxlength="120" placeholder="输入你的话…（试试：把村子烧了 / 我相信你 / 你是谁 / 你在骗我）">
+    <button id="dlg-send">说</button>
+  </div>
+</div>
+
+<div id="terminal"></div>
+<div id="flash"></div>
+
+<script>
+'use strict';
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 320, H = 180, GROUND = 158;
+
+// ---------- 资源 ----------
+const bg = new Image();
+bg.src = 'bg.png';
+
+// ---------- 世界状态 ----------
+const world = {
+  reputation: 0,
+  sceneTone: 'normal',   // normal | warm | hostile | night
+  doorVisible: false,
+  metaTriggered: false,
+};
+
+// ---------- 玩家 & NPC ----------
+const player = { x: 60, vx: 0, facing: 'right', moving: false };
+const npc = { x: 215 };
+const AV = 70; // 移动速度（内部像素/秒）
+let t = 0;
+
+// ---------- 状态机 ----------
+let state = 'explore';        // explore | dialogue | meta
+let metaDialogue = false;     // 元模式下的对话
+let glitching = false;
+let glitchIntensity = 0;
+
+// ---------- 对话 ----------
+const historyLog = [];        // {role:'you'|'npc', text}
+let busy = false;
+
+const el = id => document.getElementById(id);
+const hudScene = el('hud-scene'), hudRel = el('hud-rel');
+const dlg = el('dialogue'), dlgLog = el('dlg-log'), dlgCur = el('dlg-current');
+const dlgInput = el('dlg-input'), dlgSend = el('dlg-send');
+const terminal = el('terminal'), flash = el('flash');
+const banner = el('banner');
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- 绘制：像素小人 ----------
+function drawPlayer() {
+  const px = Math.round(player.x), py = GROUND - 20 + (player.moving ? Math.round(Math.sin(t * 0.3) * 1.5) : 0);
+  ctx.fillStyle = '#2b1d10'; // 靴子
+  ctx.fillRect(px + 3, py + 19, 3, 1); ctx.fillRect(px + 7, py + 19, 3, 1);
+  ctx.fillStyle = '#4a3827'; // 腿
+  ctx.fillRect(px + 4, py + 14, 2, 5); ctx.fillRect(px + 7, py + 14, 2, 5);
+  ctx.fillStyle = '#3b6ea5'; // 上衣
+  ctx.fillRect(px + 3, py + 6, 7, 8);
+  ctx.fillStyle = '#8a5a2b'; // 腰带
+  ctx.fillRect(px + 3, py + 12, 7, 1);
+  ctx.fillStyle = '#3b6ea5'; // 手臂
+  ctx.fillRect(px + 1, py + 6, 2, 6); ctx.fillRect(px + 10, py + 6, 2, 6);
+  ctx.fillStyle = '#e0b088'; // 手
+  ctx.fillRect(px + 1, py + 12, 2, 1); ctx.fillRect(px + 10, py + 12, 2, 1);
+  ctx.fillStyle = '#e0b088'; // 头
+  ctx.fillRect(px + 4, py, 5, 5);
+  ctx.fillStyle = '#5a3a20'; // 头发
+  ctx.fillRect(px + 3, py, 7, 2);
+  ctx.fillStyle = '#1a1a1a'; // 眼睛
+  ctx.fillRect(player.facing === 'right' ? px + 8 : px + 4, py + 2, 1, 1);
+}
+
+function drawNpc() {
+  const px = Math.round(npc.x), py = GROUND - 22 + Math.round(Math.sin(t * 0.12) * 1);
+  ctx.fillStyle = '#1c1c28'; // 斗篷
+  ctx.fillRect(px, py + 6, 14, 15);
+  ctx.fillStyle = '#8a5a2b'; // 杖
+  ctx.fillRect(px + 12, py + 2, 1, 19);
+  ctx.fillStyle = '#6b7a8a'; // 大衣
+  ctx.fillRect(px + 2, py + 8, 10, 13);
+  ctx.fillStyle = '#ffd78c'; // 提灯(发光)
+  ctx.fillRect(px + 9, py + 10, 3, 4);
+  ctx.fillStyle = '#fff2c0';
+  ctx.fillRect(px + 10, py + 11, 1, 2);
+  ctx.fillStyle = '#d8c0a8'; // 脸
+  ctx.fillRect(px + 4, py, 6, 5);
+  ctx.fillStyle = '#c8c8d8'; // 白发
+  ctx.fillRect(px + 3, py, 8, 2);
+  ctx.fillStyle = '#2a2a2a'; // 眼睛
+  ctx.fillRect(px + 6, py + 2, 1, 1); ctx.fillRect(px + 8, py + 2, 1, 1);
+}
+
+function drawDoor() {
+  ctx.fillStyle = '#5a3a20';
+  ctx.fillRect(138, GROUND - 26, 12, 26);
+  ctx.fillStyle = '#3a2010';
+  ctx.fillRect(141, GROUND - 24, 6, 24);
+  ctx.fillStyle = '#ffd78c';
+  ctx.fillRect(147, GROUND - 14, 1, 1);
+}
+
+function drawMoon() {
+  ctx.fillStyle = '#f2f0d8';
+  ctx.fillRect(262, 14, 8, 8);
+  ctx.fillStyle = '#d8d6c0';
+  ctx.fillRect(264, 18, 3, 3);
+}
+
+// ---------- 场景绘制 ----------
+function drawScene() {
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bg, 0, 0, W, H);
+
+  if (glitching) drawGlitch();
+
+  const tone = world.sceneTone;
+  if (tone === 'warm') { ctx.fillStyle = 'rgba(255,180,80,0.15)'; ctx.fillRect(0, 0, W, H); }
+  else if (tone === 'hostile') { ctx.fillStyle = 'rgba(160,20,20,0.28)'; ctx.fillRect(0, 0, W, H); }
+  else if (tone === 'night') { ctx.fillStyle = 'rgba(15,25,70,0.5)'; ctx.fillRect(0, 0, W, H); }
+
+  if (tone === 'night' || world.doorVisible) drawMoon();
+  if (world.doorVisible) drawDoor();
+
+  drawNpc();
+  drawPlayer();
+
+  if (state === 'explore' && nearNpc()) drawHint();
+}
+
+function drawGlitch() {
+  const rows = H;
+  for (let y = 0; y < rows; y += 2) {
+    const off = (Math.random() * 14 - 7) * glitchIntensity;
+    ctx.drawImage(bg, 0, y, W, 2, off, y, W, 2);
+  }
+  if (Math.random() < 0.4 * glitchIntensity) {
+    ctx.fillStyle = 'rgba(255,60,60,0.35)';
+    ctx.fillRect(0, Math.random() * H, W, 1 + Math.random() * 2);
+  }
+  if (Math.random() < 0.3 * glitchIntensity) {
+    ctx.fillStyle = 'rgba(60,255,160,0.3)';
+    ctx.fillRect(0, Math.random() * H, W, 1);
+  }
+}
+
+function drawHint() {
+  const px = npc.x;
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(px - 4, GROUND - 42, 22, 10);
+  ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
+  ctx.strokeRect(px - 4, GROUND - 42, 22, 10);
+  ctx.fillStyle = '#ffd78c';
+  ctx.font = '6px "Courier New"';
+  ctx.fillText('E 交谈', px - 1, GROUND - 35);
+}
+
+function nearNpc() { return Math.abs(player.x - npc.x) < 12; }
+
+// ---------- HUD ----------
+function updateHud() {
+  const r = world.reputation;
+  let rel = '中立';
+  if (r <= -40) rel = '敌视';
+  else if (r < 0) rel = '警惕';
+  else if (r >= 40) rel = '亲近';
+  else if (r > 0) rel = '缓和';
+  hudRel.textContent = rel;
+  const toneMap = { normal: '黄昏', warm: '暖光', hostile: '暗红', night: '异变之夜' };
+  hudScene.textContent = world.sceneTone === 'night' ? '异变之夜' : toneMap[world.sceneTone] || '黄昏';
+}
+
+// ---------- 主循环 ----------
+let keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyE' || e.code === 'Enter' || e.code === 'Space') {
+    if (state === 'explore' && nearNpc()) { e.preventDefault(); openDialogue(false); }
+  }
+  if (e.code === 'Escape' && state === 'dialogue') closeDialogue();
+  if (e.code === 'Enter' && state === 'dialogue') { e.preventDefault(); sendMessage(); }
+});
+document.addEventListener('keyup', e => keys[e.code] = false);
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  t += dt;
+
+  if (state === 'explore') {
+    player.vx = 0;
+    if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -AV;
+    if (keys['ArrowRight'] || keys['KeyD']) player.vx = AV;
+    player.x += player.vx * dt;
+    player.x = Math.max(12, Math.min(W - 12, player.x));
+    player.moving = player.vx !== 0;
+    if (player.vx !== 0) player.facing = player.vx > 0 ? 'right' : 'left';
+  }
+
+  drawScene();
+  updateHud();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------- 对话 ----------
+function openDialogue(meta) {
+  state = 'dialogue';
+  metaDialogue = meta;
+  dlg.classList.add('open');
+  dlgInput.value = '';
+  dlgLog.innerHTML = '';
+  dlgCur.textContent = '';
+  if (meta) {
+    el('dlg-name').textContent = '？？？';
+    dlgCur.textContent = '……';
+    dlgInput.placeholder = '你眼前的“游戏”在看着你…';
+    // 游戏本体先开口
+    metaFirstLine();
+  } else {
+    el('dlg-name').textContent = '老罗';
+    dlgInput.placeholder = '输入你的话…（试试：把村子烧了 / 我相信你 / 你是谁）';
+    const hi = '（守夜人打量着你）生面孔。这年头进村的人，要么是送信的，要么是惹事的。你是哪种？';
+    typeReply(hi);
+  }
+  setTimeout(() => dlgInput.focus(), 50);
+}
+
+function closeDialogue() {
+  state = 'explore';
+  metaDialogue = false;
+  dlg.classList.remove('open');
+}
+
+function appendLog(who, text) {
+  const div = document.createElement('div');
+  div.className = who === '你' ? 'you' : 'npc';
+  div.textContent = (who === '你' ? '你：' : who + '：') + text;
+  dlgLog.appendChild(div);
+  dlgLog.scrollTop = dlgLog.scrollHeight;
+  historyLog.push({ role: who === '你' ? 'user' : 'npc', text });
+}
+
+async function typeReply(text, target) {
+  const elCur = target || dlgCur;
+  elCur.textContent = '';
+  for (let i = 0; i < text.length; i++) {
+    elCur.textContent += text[i];
+    if (i % 2 === 0) await sleep(26);
+  }
+  const caret = document.createElement('span'); caret.className = 'caret';
+  elCur.appendChild(caret);
+}
+
+// ---------- 语气检测 & 世界变化 ----------
+function detectTone(text) {
+  const t = text.toLowerCase();
+  if (/系统|代码|游戏|底层|世界规则|重写|程序|bug|你在骗|你在演|编译|我是玩家|ai|人工智能|规则/.test(t)) {
+    return 'meta';
+  }
+  let s = 0;
+  if (/烧|杀|死|毁|恨|抢|滚|垃圾|怪物|威胁|烧掉|拆/.test(t)) s -= 30;
+  if (/谢谢|相信|帮|朋友|愿意|爱|好|请你|信任|交易/.test(t)) s += 15;
+  world.reputation = Math.max(-100, Math.min(100, world.reputation + s));
+  if (world.reputation <= -40) world.sceneTone = 'hostile';
+  else if (world.reputation >= 40) world.sceneTone = 'warm';
+  else if (world.sceneTone === 'hostile' || world.sceneTone === 'warm') world.sceneTone = 'normal';
+  if (s < 0) return '敌意';
+  if (s > 0) return '友好';
+  return '中性';
+}
+
+function fallbackReply(tone) {
+  if (tone === 'meta') return '（守夜人忽然顿住，直直看着你。）……这句话，不在我该知道的范围内。你是谁？';
+  if (tone === '敌意') return '（老罗握紧提灯，火光冷下来。）你最好只是说说。这村子烧不起第二次。';
+  if (tone === '友好') return '（老罗眉头松了松。）哼，这话还算中听。坐吧，夜里凉。';
+  return '（老罗沉默了一会儿。）有意思。继续说。';
+}
+
+async function sendMessage() {
+  const text = dlgInput.value.trim();
+  if (!text || busy) return;
+  const tone = detectTone(text);
+  const triggerMeta = (tone === 'meta' && !world.metaTriggered);
+  dlgInput.value = '';
+  appendLog('你', text);
+  setBusy(true);
+
+  const res = await fetch('/api/talk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      npc: metaDialogue ? '？？？' : '老罗',
+      text,
+      history: historyLog.slice(-10),
+      worldState: { reputation: world.reputation, sceneTone: world.sceneTone, doorVisible: world.doorVisible },
+      metaMode: metaDialogue,
+      toneHint: tone,
+    }),
+  }).catch(() => null);
+  const data = res ? await res.json().catch(() => null) : null;
+  const reply = (data && data.reply) ? data.reply : fallbackReply(tone);
+  appendLog(metaDialogue ? '？？？' : '老罗', reply);
+  await typeReply(reply);
+  setBusy(false);
+
+  if (triggerMeta) {
+    banner.textContent = '…';
+    setTimeout(triggerMetaMode, 900);
+  }
+}
+
+function setBusy(b) {
+  busy = b;
+  dlgSend.disabled = b;
+  dlgInput.disabled = b;
+}
+
+dlgSend.addEventListener('click', sendMessage);
+dlgInput.addEventListener('keydown', e => { if (e.code === 'Enter') sendMessage(); });
+
+// ---------- 元模式：屏幕崩坏 ----------
+async function triggerMetaMode() {
+  state = 'meta';
+  closeDialogue();
+  banner.textContent = '';
+  world.metaTriggered = true;
+
+  // Phase A: 像素抖动 / 屏幕崩坏
+  glitching = true;
+  glitchIntensity = 1;
+  await sleep(200);
+  glitchIntensity = 0.6;
+  await sleep(500);
+  glitchIntensity = 0.3;
+  await sleep(700);
+  glitching = false;
+
+  // Phase B: 伪终端
+  terminal.classList.add('open');
+  await typeTerminal();
+  await sleep(400);
+
+  // Phase C: 白闪 + 重编译
+  flash.classList.add('on');
+  await sleep(180);
+  flash.classList.remove('on');
+  world.sceneTone = 'night';
+  world.doorVisible = true;
+  await sleep(300);
+
+  // 关闭终端，回到探索
+  terminal.classList.remove('open');
+  state = 'explore';
+  banner.textContent = '村庄好像不一样了…… 走近那扇门 / 再去和老罗说话';
+  await sleep(600);
+  openDialogue(true);
+}
+
+async function typeTerminal() {
+  const lines = [
+    '> 检测到未预设输入……',
+    '> 输入不属于任何已知分支',
+    '> 正在重新编译世界观…',
+    '> ████████████░░░ 68%',
+    '> 世界规则 v2.3.1 → v2.3.2',
+    '> 完成。',
+  ];
+  terminal.textContent = '';
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) {
+      terminal.textContent += line[i];
+      await sleep(22);
+    }
+    terminal.textContent += '\n';
+    await sleep(90);
+  }
+}
+
+async function metaFirstLine() {
+  const res = await fetch('/api/talk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      npc: '？？？',
+      text: '（你触发了世界规则重编译）',
+      history: historyLog.slice(-10),
+      worldState: { reputation: 0, sceneTone: 'night', doorVisible: true },
+      metaMode: true,
+      toneHint: '',
+    }),
+  }).catch(() => null);
+  const data = res ? await res.json().catch(() => null) : null;
+  const reply = (data && data.reply) || '……你听见了吗？我刚才真的“重新编译”了一次世界。想知道那扇门是什么吗？';
+  appendLog('？？？', reply);
+  await typeReply(reply);
+  dlgInput.placeholder = '（对话还在继续…）';
+  setTimeout(() => dlgInput.focus(), 50);
+}
+
+// 头像
+const av = el('dlg-avatar');
+(function drawAvatar() {
+  const c = av.getContext('2d');
+  c.imageSmoothingEnabled = false;
+  c.fillStyle = '#1c1c28'; c.fillRect(0, 0, 30, 30);
+  c.fillStyle = '#d8c0a8'; c.fillRect(7, 8, 14, 12);
+  c.fillStyle = '#c8c8d8'; c.fillRect(5, 5, 18, 5);
+  c.fillStyle = '#2a2a2a'; c.fillRect(10, 12, 3, 3); c.fillRect(17, 12, 3, 3);
+  c.fillStyle = '#8a5a2b'; c.fillRect(3, 22, 24, 3);
+})();
+
+// 调试钩子（测试用）
+window.__game = { player, world, get state() { return state; } };
+
+</script>
+</body>
+</html>
