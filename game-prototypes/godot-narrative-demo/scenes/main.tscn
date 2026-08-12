@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://dhr5tpddc7b1r" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="PackedScene" path="res://scenes/npc.tscn" id="2_npc"]
-[ext_resource type="PackedScene" path="res://scenes/dialogue_panel.tscn" id="3_dp"]
+[ext_resource type="PackedScene" path="res://scenes/dialogue_panel.tscn" id="3_sugp2"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(12, 16)
@@ -39,11 +39,21 @@ npc_name = "当铺老板"
 body_color = Color(0.42, 0.33, 0.25, 1)
 speed = 20.0
 dwell = 3.0
+lines = Array[String](["收东西，也收话。", "你那张\"话\"，我按斤称。", "墨贵，别乱写。"])
 
 [node name="Bard" parent="." unique_id=857828711 instance=ExtResource("2_npc")]
 body_color = Color(0.35, 0.29, 0.48, 1)
 speed = 36.0
 dwell = 1.5
+lines = Array[String](["第七天夜里，城会说话。", "三道刻痕，作者之墨。", "你信命吗？"])
+
+[node name="Priest" parent="." unique_id=265407709 instance=ExtResource("2_npc")]
+npc_name = "神官"
+body_color = Color(0.33998263, 0.278438, 0.082677595, 1)
+stations = Array[Vector2]([Vector2(60, 150), Vector2(280, 150)])
+speed = 40.0
+dwell = 2.0
+lines = Array[String](["圣火七天不灭。", "神不回应，但钟会。", "离开的人，都留了话。"])
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=667611577]
 position = Vector2(40, 150)
@@ -63,17 +73,12 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 text = "E 交谈"
 horizontal_alignment = 1
 
-[node name="DialoguePanel" parent="UI" instance=ExtResource("3_dp")]
-
-[node name="Priest" parent="." unique_id=265407709 instance=ExtResource("2_npc")]
-npc_name = "神官"
-body_color = Color(0.33998263, 0.278438, 0.082677595, 1)
-stations = Array[Vector2]([Vector2(60, 150), Vector2(280, 150)])
-speed = 40.0
-dwell = 2.0
+[node name="DialoguePanel" parent="UI" unique_id=1705251335 instance=ExtResource("3_sugp2")]
 
 [node name="Mayor" parent="." unique_id=29940872 instance=ExtResource("2_npc")]
 npc_name = "市长"
 body_color = Color(0.09411765, 0.11372549, 0.13725491, 1)
 stations = Array[Vector2]([Vector2(52, 150), Vector2(150, 150), Vector2(208, 150)])
 speed = 30.0
+dwell = 2.0
+lines = Array[String](["今夜，钟楼不会响了。", "有人在七天里消失了。", "你……是从外面来的吗？"])
