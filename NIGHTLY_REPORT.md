@@ -1,12 +1,43 @@
 ---
 title: 封印之殿 — 夜间工作汇总报告
-date: 2026-08-10 02:28
+date: 2026-08-12 12:00
 tags: [game-design, sealed-hall, nightly-report]
 ---
 
-# 封印之殿 夜间汇总报告（2026-08-10 02:00 自检）
+# 封印之殿 夜间汇总报告（2026-08-12 晨间最终版，12:00 回收）
 
-> 本轮夜间窗口核心目标：#10 出场节奏优化 + 修复全部"一开就卡死"的前后端契约 bug + 验证结局修复 Agent 结果。**三项全部完成。**
+> ## ☀️ 晨间摘要（2026-08-12 12:00 起床版）
+>
+> **通宵 9+ 小时自主工作已完成，全部验证通过、无阻塞 bug。** 核心三线：① 建筑场景材质 ✅ ② 游戏手感 ✅ ③ 莉安娜动画增强（#6）✅；今晨另修复两处 AI 链路真 bug（详见下）。
+>
+> ### 昨夜/今晨产出（按优先级）
+> 1. **莉安娜动画增强（#6）完整交付**：白模（`#cccccc` 无贴图）+ idle/talk/walk 三动画；talk 手臂 0.7~1.1 rad 大幅摆臂（3.93s clip），**引擎四元数 + doubao 截图双重验收** ✓
+> 2. **全部 4 NPC 动画齐备**：baruk/margaret/rog/liana 全 [idle,talk,walk]，walk 入场演出就绪（stage 1-4 各一人走入）
+> 3. **游戏手感**：跳跃/落地音效、横扫相机侧倾、空间音频、设置持久化、**NPC 脚步声**（距离衰减）
+> 4. **建筑场景材质**：砖墙/木地板/家具 PBR 贴图、壁灯火焰动画、色温氛围
+> 5. **控制台真正零 4xx**：修复 liana FBX 内嵌 Windows 绝对路径纹理引用导致的 6×403（LoadingManager URL 拦截）
+> 6. **AI 意图解析兜底加固（新）**：`deepseek-v4-pro` 偶发空响应/卡顿 → `parse_intent` 第 2 次即切 `v4-flash` + 每请求 8s 上限；对话测试 9 轮 0 失言
+> 7. **UI 聊天超时修复（新）**：前端 abort 15s→30s + intent 不再浪费在波动 pro；`cdp_chat_ui.js` 与悄悄话 UI 全流程端到端通过
+> 8. **Python 测试**：state_machine 30/30 · endings 46/46 · dialogue 9 轮零失言 · integration 16/16
+>
+> ### 明日事项（用户已定）
+> - **全部角色模型更换**：流程已写成 `docs/mixamo-model-guide.md` 第八节「自动化管线」——上传新模型 → 同角色连下 idle/talk/walk → 覆盖刷新即生效；验证脚本 `cdp_clean_404_check.js` / `cdp_rog_walk_trace.js`；候选角色清单见指南 §二
+> - **手感调参**：反馈→参数对照表见 `docs/game-feel-reference.md`（改 `src/fps_controller.js` 刷新即生效）
+> - 旧 liana_tpose.glb（Sketchfab）已弃用可删；`D:/tools/playwright/render_odin/` 为本次模型处理留档
+>
+> ### 12:00 怎么开始（快速版）
+> - **双击 `试玩启动.bat`**（推荐入口）：**杀旧进程 → 新起服务器 → 重置 stage=0 → 打开游戏**
+> - **先跑一键冒烟**（试玩前体检，14 项 PASS/FAIL，自动复位 stage=4 全量验证后回 stage=0）：
+>   ```
+>   cd /d/tools/playwright
+>   node cdp_smoke_1200.js
+>   ```
+>   全绿 🟢 再进游戏；有 ❌ 先看那一行。
+> - 照 **`PLAYTEST_CHECKLIST.md`**（已更新到 08-12 版）§九：**开场黑屏打字剧情 → 点「进入大殿」→ 空殿起点 → 点「⏭ 等待…」让 NPC 逐个入场**；重点看 3D 画面/动画/脚步声/控制台零错误
+> - 服务器当前 stage=0（每次启动器都会重置，不再残留全员在场）
+> - 动画/模型/手感三类核验脚本均已就绪，改模型后跑 `cdp_clean_404_check.js` 一键回归；想验真 AI 聊天另跑 `cdp_chat_ui.js`
+>
+> ---
 
 ## 一、产出汇总
 
@@ -18,9 +49,15 @@ tags: [game-design, sealed-hall, nightly-report]
 | 4 | **结局可达性修复验证**：修复 Agent 4 缺口 + 漏洞，`test_endings.py` 46/46 复核通过 | ✅ |
 | 5 | **纹理资产**：6 个 CC0 纹理 + Old Hall HDR 本地化（离线可玩） | ✅ |
 | 6 | **端到端集成测试**：`integration_test.py` 16 项（`--no-ai` 确定性模式） | ✅ |
-| 7 | **试玩清单**：`PLAYTEST_CHECKLIST.md`（用户起床 5 分钟进游戏） | ✅ |
-| 8 | **交接文档**：`HANDOFF.md`（新会话 5 分钟无缝接手） | ✅ |
-| 9 | **终端版补充接线**：main.py 节奏提示 + `/wait` 别名 + display.py 崩溃修复 | ✅ |
+| 7 | **AI 意图解析兜底加固（08-12 凌晨）**：`deepseek-v4-pro` 偶发空响应导致对话测试挂起 → `parse_intent` 末次重试切 `v4-flash`，9 轮 0 失言；游戏服务器重启热更新，聊天更稳 | ✅ |
+| 8 | **UI 聊天超时修复（08-12 晨）**：前端 15s abort 掐断慢 AI 请求 + intent 重试浪费在波动 pro → `parse_intent` 第 2 次切 flash + 每请求 8s 上限 + 前端超时 30s；`cdp_chat_ui.js` 端到端通过 | ✅ |
+| 9 | **悄悄话 UI 全流程验证（08-12 晨）**：按钮切换→选目标→`[悄悄话 @NPC]` 前缀→真实回复渲染，public/whisper 双路径 UI 全覆盖 | ✅ |
+| 10 | **一键试玩启动器（08-12 晨）**：`试玩启动.bat`——自动起服+恢复 stage=4+打开游戏；冒烟测试 V/M 检查改 class 制（确定性 13/13 连续通过） | ✅ |
+| 11 | **手感调参速查**：`docs/game-feel-reference.md`（当前值+行号+反馈对照表），试玩反馈可秒级调参 | ✅ |
+| 12 | **试玩清单**：`PLAYTEST_CHECKLIST.md`（用户起床 5 分钟进游戏） | ✅ |
+| 13 | **交接文档**：`HANDOFF.md`（新会话 5 分钟无缝接手） | ✅ |
+| 14 | **终端版补充接线**：main.py 节奏提示 + `/wait` 别名 + display.py 崩溃修复 | ✅ |
+| 15 | **玩家反馈处理（08-12 10:1x）**：启动器杀旧进程 + 从 stage 0 干净开局；恢复开场黑屏打字剧情；出生点实证（确在入口，非玛格丽特）；粉色板子定位 = NPC 名牌；冒烟适配后 **14/14** | ✅ |
 
 ## 二、代码自检（语法 / 引用 / 逻辑）
 
@@ -189,3 +226,190 @@ python -X utf8 tests/test_endings.py      # 46 项
 - **协作同步**：朋友通过 Tailscale 实时访问 8080（100.117.160.66 日志确认加载最新模块），刷新即同步
 - 测试：集成 16/16 全绿
 
+
+### 16. 2026-08-12 凌晨轮（场景材质 + 游戏手感 + 测试验证）
+
+> 用户指示：优先"建筑场景材质 + 游戏手感"（比人物容易），自主决策、不卡死，12:00 回收。
+
+#### 产出汇总
+| # | 产出 | 状态 |
+|:--:|------|:---:|
+| 1 | **场景材质增强**：石墙/木地板/木梁/深色木全部接入法线贴图（35 个网格 normalMap+normalScale） | ✅ |
+| 2 | **木质天花板**：y=7.65，俯瞰模式隐藏、第一人称显示（`onModeChange` 联动，`window.__ceilingMesh`） | ✅ |
+| 3 | **四角石柱** ×4（0.5×7×0.5，石墙纹理+法线） | ✅ |
+| 4 | **壁灯照明**：南北墙 4 盏暖色 PointLight（#ffa860，intensity 5.5，distance 8）+ 可见灯珠 | ✅ |
+| 5 | **移动手感**：水平速度平滑插值（accel=14/decel=12，起步顺滑/松键滑行） | ✅ |
+| 6 | **头部晃动 + 奔跑 FOV**：走/跑不同频率幅度，Shift 奔跑 FOV +9° 平滑扩张 | ✅ |
+| 7 | **脚步声**：`audio.js` 新增 `step(running)`，每跨一步低频脉冲（跑 0.07/走 0.045 增益） | ✅ |
+| 8 | **莉安娜动画管线**：清理 Biped（53 标准骨 + 裙 + 蒙皮）就绪，`liana_cleanbiped.fbx`，待 Mixamo 上传（挂起） | ⏸️ |
+
+#### 代码自检（语法 / 引用 / 逻辑）
+- **语法**：src 下 8 个 JS 模块 `node --check` 全部通过（fps_controller/audio/models/props/perf/settings/guidance/atmosphere）。
+- **引用**：`onFootstep` 接线（fps_controller→audio.step）、`onModeChange` 接线（fps_controller→ceiling 显隐）、`__ceilingMesh`/`__fpsController` 全局挂载均在 index.html 内确认。
+- **逻辑**：
+  - 天花板仅 in-game 模式可见，避免俯瞰挡视线；
+  - 壁灯 `castShadow=false`（无阴影性能开销）；
+  - FOV 扩张与头晃仅第一人称应用（第三人称/俯瞰不干扰）。
+- **运行验证**（CDP 无头浏览器实测）：
+  - 建筑自检 `{ceilingExists:true, columns:4, normalMappedMeshes:35}` ✓
+  - 手感测试 `{P1加速中2.58m/s → P2满速4.0m/s, FOV_DELTA +8.5°, ERRORS:NONE}` ✓
+  - 页面 0 JS 错误，Perf 统计正常返回 ✓
+
+#### 测试结果（2026-08-12 凌晨）
+| 套件 | 结果 | 说明 |
+|------|:---:|------|
+| `test_state_machine.py` | **30/30** | 状态机全绿 |
+| `tests/test_endings.py` | **46/46** | 5 结局全可达 |
+| `tests/test_dialogue_scenarios.py` | **9 轮/0 失言** | 3 策略×3 轮模拟，触发结局：无（符合预期） |
+
+#### 已知问题 / 待办
+- **已知 404（#5/#6 遗留，非本次引入）**：`liana_tpose.fbx`、`baruk_walk.fbx`、`margaret_walk.fbx` —— 角色动画模型未装。
+- **#5 场景道具/玩家模型替换**：待调查（下一个工作目标）。
+- **#6 莉安娜动画增强**：唯一剩余步骤 = Mixamo 上传 `liana_cleanbiped.fbx` 映射测试 → 下载 idle/talk → 安装。因用户指示转向场景/手感而挂起。
+- **pytest 未安装**：测试用 `PYTHONIOENCODING=utf-8 python <file>` 直接运行。
+
+### 17. 2026-08-12 凌晨二波（手感 + 氛围续做）
+
+> 在第一波（材质+手感）基础上继续打磨，全部 CDP 验证通过。
+
+| # | 产出 | 状态 |
+|:--:|------|:---:|
+| 1 | **跳跃/落地音效**：audio.js 加 `jump()`（上升扫频）+ `land(impact)`（低频撞击，音量随冲击力），fps_controller 加回调接线 | ✅ |
+| 2 | **横扫相机侧倾**：A/D 横扫时相机轻微 roll（走 0.028 / 跑 0.05），插值平滑 | ✅ |
+| 3 | **壁灯火焰动效**：4 盏壁灯加火焰光球+光晕+木座，渲染循环闪烁（光强 ±1.2、火焰缩放 ±0.22），低画质熄灭远端 | ✅ |
+| 4 | **空间音频**：按玩家到最近光源距离平滑调火声/闷响音量（近灯火声亮、角落闷响沉） | ✅ |
+| 5 | **挂毯/旗帜纹理修复**：程序化 canvas 织物纹理（竖条纹+金边+徽记/星徽），消除"纯色块像加载失败"视觉 | ✅ |
+| 6 | **音频 setter bug 修复**：`setFireVolume()` 不存在（audio.js 用 ES6 属性 setter）→ 改属性赋值，曾致 animate 每帧抛异常 | ✅ |
+
+**验证数据**：
+- 壁灯闪烁：光强 4.30→6.51→4.88，火焰缩放 1.066→1.090→0.980 ✓
+- 空间音频：近火把 fireVol 0.0324↑/drone 0.0199↓，中心 0.0174↓/0.0239↑ ✓
+- 跳跃/落地：jumpCount=1，landCount=1，impact=0.77 ✓；横扫 bank=0.0267 ✓
+- 综合回归：4 NPC 模型全加载、Knight 化身✓、天花板✓、42 纹理网格、0 非404页面错误 ✓
+- 豆包视觉确认：壁灯暖光光源 + 挂毯图案规整 + 旗帜非纯色 ✓
+
+**注**：headless SwiftShader 下 5s 平均帧率 <30 会触发自动降档到 low（设计如此，真机高档正常）；调试/QA 可用 `window.__forceQuality='high'` 强制高档验证。
+
+### 18. 2026-08-12 凌晨补充（蹲伏FOV + 旗帜纹理 + 设置修复）
+
+- **下蹲 FOV 收缩**：蹲下 −5°（潜行感），与奔跑 +9° 并存（验证：蹲 45.14 / 回正 49.86 / 跑 58.74）。
+- **旗帜纹理**：程序化 canvas（蓝底条纹 + 金边 + 八芒星徽），与挂毯同批消除"纯色块像加载失败"问题。
+- **设置持久化验证**：灵敏度/改键/画质刷新后正确恢复（CDP 实测 sens 2.0 / toggle v / run alt）。
+- **自动降档永久锁低修复**：`setQuality(q, persist=false)` —— 自动降档不再写 localStorage，避免一次性低帧率把画质永久锁成 low；改回由用户决定。
+- **#5 场景道具/玩家模型替换完成**：家具 + Knight 化身 + 4 NPC 模型全部就位；仅剩 walk 动画（需 Mixamo）。
+
+**待办**：#6 莉安娜动画（挂起待 Mixamo 上传）；baruk/margaret walk 动画（需 Mixamo）。
+
+### 19. 2026-08-12 早间补记（#6 莉安娜动画完成 + 纹理回退）
+
+> 用户中途起来决定：**人物模型明天整体替换，视觉优先级低**；"白模好一点"，程序化绿长袍被否。
+
+| # | 产出 | 状态 |
+|:--:|------|:---:|
+| 1 | **Mixamo 上传管线打通**（长期挂起项）：setInputFiles 隐藏 input + API 202 监控 + autorig 弹窗自动过 | ✅ |
+| 2 | **莉安娜骨骼动画安装**：`liana_tpose.fbx`(5.5MB, Bip001, 318bones) + `liana_idle.fbx` + `liana_talk.fbx`(3.93s 对话动作) | ✅ |
+| 3 | **游戏内动画验证**：clips=[idle,talk]，playTalk 播完自动回 idle（cdp_liana_anim_test.js） | ✅ |
+| 4 | **程序化纹理回退**：移除绿长袍/皮肤纹理调用 + 清理 `_makeDressTexture`/`_makeSkinTexture`/`applyLianaProceduralTextures` 死代码 | ✅ |
+
+**关键发现**：Mixamo 下载 FBX 保留 `Bip001` 骨架（非 mixamorig）；动画文件共用同骨架 → 直接绑定播放。baruk/margaret 的 walk 动画可用同一管线补（人物优先级低，暂缓）。
+
+**当前莉安娜状态**：白模 + 完整骨骼动画（idle 循环 / talk 3.93s），符合用户"白模优先"决策。
+
+### 19b. 2026-08-12 早间补记（baruk/margaret walk 补全 — 最后 404 清除）
+
+> NPC 入场为 1.2m/s 走进步态，缺 walk 会滑步（属游戏手感，非视觉）→ 复用打通管线补全。
+
+- **baruk_walk.fbx**（3.74MB，Walking With A Swagger）✅
+- **margaret_walk.fbx**（16.1MB，同动画）✅
+- 验证：4 NPC 全加载，baruk/margaret clips=[idle,talk,walk]（walk 1.03s），walk 播放确认；服务器 200
+- **剩余真实 404 仅 `liana_walk.fbx`**（liana 无 walk 场景，属预期探测）
+- 动画卡名匹配教训：须严格 `name === 'Walking'`，`/^Walking/` 会误中 "Walking Left Turn"
+
+**完整动画矩阵**：baruk/margaret/rog 三动画齐（idle+talk+walk），liana idle+talk，player idle+walk。
+
+### 19c. 2026-08-12 早间终补（liana_walk — 控制台 100% 干净）
+
+- `STAGE_ENTRANCE_NPC = {1:'rog',2:'baruk',3:'liana',4:'margaret'}` → liana stage 3 亦为走入式入场，补 `liana_walk.fbx`（5.66MB）
+- **最终回归**：4 NPC 全 [idle,talk,walk] · `REAL_404: NONE` · `ERRORS: NONE` ✓
+- 至此全部角色动画齐备，控制台零 404 零错误
+
+### 19d. 2026-08-12 早间终补（动画深度验证 + 对话防打断修复）
+
+- **骨骼运动验证**（四元数采样，此前位置采样为误判）：liana talk 臂 3.31 / liana idle 3.45 / margaret walk 臂 1.03 / baruk walk 小腿 1.00 / 全员 idle 1.0+ → **Mixamo 动画端到端真实生效**
+- **修复漫游打断对话**：walk 全齐后漫游逻辑会在 talk 中触发 `playAnimation(walk)` 打断说话 → 加 `current==='talk'` 守卫暂停漫游；验证 talk 3s 内不被中断 ✓
+
+
+### 19e. 2026-08-12 早间终补（莉安娜 talk 视觉级双重验收 + 测试基建）
+
+**目标**：为 #6 莉安娜动画增强补上"说话手势中"的实拍图级证据（此前只有骨骼数据）。
+
+**三连排障（均为测试侧，非游戏 bug）**：
+1. **FPS 相机覆盖**：`setMode('fps')` 会重置 camera 到 `this.pos` + yaw=π；且同 evaluate 内同步读 camPos 读到的是下一帧前的旧值。解法：setMode 后等 ~600ms 再验证/截图。
+2. **阶段门控重藏 NPC**：`fetchGameState` 每 4s 轮询把 `group.visible = currentPhase >= entranceStage` 重新应用，覆盖测试的强制可见。解法：index.html 三处门控点加 `window.__forceNpcVisible===true` 调试开关（沿用 `__forceQuality` 先例，仅自动化测试用）。
+3. **遮挡**：新手操作指南卡 `.g-card/.g-sub`（居中大卡）+ 大厅中央守护灵 3D 装置（粉条纹+斜杠圆图标）挡住角色。解法：截图前 CSS 隐藏 UI 卡 + 相机移到西南角落 (-6.5,0,-5.8)。
+
+**验收证据**：
+- 引擎内：Bip001-R-UpperArm 四元数 delta 全程 **1.14/0.82/0.70/0.71/0.96/0.77 rad**（持续大幅摆臂），talk clip 3.93s，全程 `current='talk'`
+- doubao 视觉：liana 手臂抬起、"确实很像正在说话交流、抬手比划的状态" ✓
+- 材质：liana = **白模** `#cccccc`（无贴图，6 skinned mesh）——"金发/铠甲"为暖光下阴影的视觉误读
+- 回归：4 NPC 全 [idle,talk,walk] · `REAL_404: NONE` · `ERRORS: NONE` ✓
+
+**状态**：#6 莉安娜动画增强 = **完全交付**（白模 + idle/talk/walk + 视觉/数据双验收）。人物模型视觉非优先级（用户明日换模），动画系统本轮全部就绪。
+
+### 19f. 2026-08-12 早间（NPC 脚步声 + 控制台 403 根治）
+
+- **NPC 脚步声**：`ambientAudio.step()` 加距离衰减参数；入场/漫游每 ~0.6m 一声脚步（纯 Web Audio 合成），随玩家距离渐弱 → 角色走入殿堂更有"重量感"
+- **修复隐藏 403 bug**：4 个 liana FBX 内嵌 Windows 绝对路径纹理引用，每次加载触发 6×403 控制台错误（此前的 404 检测漏掉了 403）。`models.js` 加 LoadingManager URL 拦截（绝对路径 → 1x1 透明 data URI），**全控制台零 4xx 零错误**
+- **rog walk 复核**：旧采样脚本误报"无动画"，8 点长采样证实四肢 0.35~0.68 rad 真实步态 ✓
+
+**本轮改动文件**：`src/audio.js`（step volScale）、`src/models.js`（URL 拦截）、`index.html`（脚步累加器 + `__forceNpcVisible` 门控开关）、`docs/mixamo-model-guide.md`（自动化管线章节）
+
+### 19g. 2026-08-12 早间（入场朝向修复 + 回归脚本升级）
+
+- **NPC 入场横滑 bug 修复**：入场只平移不转向（baruk 面西墙却朝东偏北走，liana 45° 侧滑）。修复：入场分支平滑转向移动方向。验证：baruk 入场中 rotY −0.416（≈移动方向 −0.395），到达后 face-player 转向玩家 2.634 ✓
+- **回归脚本升级**：`cdp_clean_404_check.js` 现同时检测 **403**（此前 6×403 因此长期漏检）+ 404 + 页面错误 → 全 NONE
+- **服务器状态**：测试后已恢复 stage=4 全员在场
+
+### 19h. 2026-08-12 11:00–12:00 收尾轮（火焰视觉升级 + 关键面板定向修复 + 火把壁挂）
+
+> **摘要**：最后两小时聚焦你上次反馈的"火把模型/火焰"观感。火焰升级为**泪滴形 LatheGeometry 火焰 + 白色内芯 + 16 粒余烬粒子**（火把/壁灯/烛火 12 处统一）；同时揪出并修复一个**会挡视角的严重摆放 bug**；再给火把补了**金属壁挂支架**解决"悬浮"观感。
+
+**1. 火焰视觉升级（Task #28）**
+- 旧的火焰是规整球形贴片 → 加色混合在亮墙上饱和成白点（doubao 曾批"边缘极其规整僵硬、卡通化火苗标识"）
+- 新方案：`LatheGeometry` 泪滴形外焰 + 半尺寸内芯双层 + 16 粒上升余烬 + 径向渐变软光晕 Sprite，三层 `renderOrder`（光晕→外焰→内芯→余烬）
+- 火焰本体改 `NormalBlending`，橙色在亮墙上保持可读；像素统计火把焰心区橙色 **0% → 47.1%**；doubao 确认"泪滴形+白芯橙体+边缘柔和+火星自然"
+
+**2. 关键 bug：内墙装饰板定向（火把被挡的根因）**
+- 现象：火把火焰中距离完全不可见、近距离可见 → 9 个探针脚本定位到深度测试被挡
+- 根因：`createWallPanel` 用 `PlaneGeometry`（默认恒定-Z），东西墙装饰板只转 rotY=0/π → 变成**悬浮在殿中央的竖直面**。兽人区面板 (9.79,2,4.25) 正好挡在玩家与东墙火把 (8.5,5) 之间
+- 修复：东西墙 5 块面板（精灵×2/矮人/兽人/符文）rotY 改 ±π/2 贴到墙面；doubao 确认墙上已无悬浮板
+
+**3. 火把壁挂支架（修"悬浮"观感）**
+- 4 支火把各加**金属横臂 + 圆形玫瑰固定盘**锚定到壁画墙；臂高接金属灯杯下缘（标准壁灯形态，不穿木柄）
+- 排障：最初把世界坐标当组内本地坐标用 → 支架被放到殿外 (17,1.45,10) 不可见；改相对坐标后 **绿色上色测试 8/8 网格画面确认**；材质迭代为中性钢灰 + 弱自发光保轮廓
+- doubao 确认支架已承托金属灯杯；远处看火把不再悬浮
+
+**4. 回归（全部绿）**
+- `cdp_smoke_1200.js` **14/14** · `cdp_flame_verify.js` **6/6** · `test_state_machine.py` **30/30** · `integration_test.py --no-ai` **16/16**
+- 服务器 stage=0 干净；浏览器零 404/403/页面错误
+
+**收尾状态**：全部 28 个任务完成，待办队列清空。试玩入口不变：双击 `试玩启动.bat` → 先跑 `cdp_smoke_1200.js` → 照 `PLAYTEST_CHECKLIST.md` §九。
+
+### 20h. 2026-08-12 13:42 用户反馈轮（背景音乐 + 移除中央挂毯板）
+
+> **摘要**：玩家起床试玩后反馈「不错不错，能加背景音乐吗，还有中间的板子还在」。本轮把玩家眼中「殿中央的板子」定位为**北墙中央的挂毯**（`src/atmosphere.js` 的 3×2.2m 程序化织物平面，暗红底+竖条纹+金边+菱形徽记），已按反馈移除；并新增**程序化背景音乐**（Web Audio 合成，A 小调氛围垫 + 五声音阶泛音 + 大厅混响），附设置面板「背景音乐音量」滑块。
+
+**1. 移除中央挂毯（Task #29）**
+- 排查链路：屏幕中心粉色像素 (240,208,208) 大块 → 排除 DOM 覆盖层 → raycast 命中 `PlaneGeometry(3,2.2) @ (0,2.8,7.45)` canvas 贴图 → 代码定位 `src/atmosphere.js` 挂毯
+- 删除挂毯 mesh 与未用的 `_createTapestryTexture()`；保留旗帜/盾牌装饰；中心粉色像素 0/26000，doubao 确认北墙恢复裸露砖墙
+
+**2. 程序化背景音乐（Task #30）**
+- `src/audio.js`：A 小调低音 pad（6 振荡器 ±2.5cent 微失谐 + 低通 480Hz + 0.03Hz 呼吸 LFO）+ 五声音阶稀疏泛音调度（2.4s/步、30% 休止、20% 落低八度）+ A1 根音脉冲（每 19s）+ 卷积混响；master=0.18×musicVol
+- `src/settings.js`：新增「背景音乐音量」滑块（0~1 默认 0.6，持久化，实时生效）
+- 验证：AudioContext running、6 pad 振荡器、调度器在位、音量实时联动、持久化 JSON 含 musicVol、零 JS 错误
+
+**3. 回归（Task #31，非侵入）**
+- 服务器 stage=1 玩家会话完好；28/28 火焰 mesh 高画质全亮；加载零错误/零 404
+- 已知遗留：NPC 占位模型（rog 暗红图元，待 Mixamo 换模，task #10）
+
+**生效**：刷新页面即生效（用户吃饭回来 reload 即可听音乐 + 中央板子已消失）。

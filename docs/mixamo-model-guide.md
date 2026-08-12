@@ -130,3 +130,82 @@ assets/models/
 - CC BY 模型正式发布时需保留署名（当前原型阶段可忽略）
 - 罗格备选：Heraklios / Knight
 
+
+---
+
+## 八、自动化管线（2026-08-12 实测打通 ⭐）
+
+> 这一节是 2026-08-12 通宵实测跑通的全自动流程。**明天要换全部角色模型时直接照做**，无需手动点 Mixamo 网页。
+
+### 0. 前置：保持登录的 Chrome
+
+- Mixamo 登录状态保存在**保活 Chrome profile** 里（CDP 端口 **9222**）。
+- 若 Chrome 没开：先启动保活 Chrome 并手动登录 Mixamo 一次，之后流程全自动。
+- 检查：`curl http://localhost:9222/json` 能返回页面列表即正常。
+
+### 1. 上传角色 → 自动绑定
+
+脚本：`D:/tools/playwright/cdp_mixamo_walk_fetch.js`
+
+```
+1. 新开页签打开 mixamo.com
+2. setInputFiles 上传 <角色>.fbx（FBX 二进制，含骨骼）
+3. 自动点 Autorig 弹窗 → NEXT → NEXT（轮询最多 60 次等绑定完成）
+4. 绑定完成后即处于该角色的 Animations 页
+```
+
+> ⚠️ 上传用的源模型**必须含骨骼**（T-Pose 或 A-Pose 均可，Mixamo 自动重绑）。
+
+### 2. 下载动画（自动）
+
+脚本：`D:/tools/playwright/cdp_mixamo_walk_download.js`（对"当前已加载角色"下载指定动画）
+
+```
+1. 在 Animations 搜索框输入动画名（如 Walking）
+2. 找卡片：必须严格 name === 'Walking'（正则 /^Walking/ 会误中 "Walking Left Turn"）
+3. 点 DOWNLOAD → 下载设置：
+   - Format: FBX Binary（内部值 fbx7_2019）   ← 实测有效，勿用 FBX for Unity
+   - Pose:   T-Pose
+   - Skin:   With Skin（tpose） / Without Skin（动画）
+4. 等 download 事件 → saveAs 到 assets/models/<角色>_<动画>.fbx
+```
+
+> 💡 **换模型的最快路径**：上传新模型绑定后，依次下载 idle / talk / walk，覆盖同名文件，刷新页面即生效。三个动画必须从**同一个 T-Pose 角色**下载（骨架一致）。
+
+### 3. 骨架命名（绑定规则）
+
+| 角色 | 骨架前缀 | 说明 |
+|------|---------|------|
+| baruk / margaret / rog | `mixamorig*` | Mixamo 标准命名 |
+| **liana** | `Bip001*` | 用户原模型自带 Bip 骨架，重上传后仍保留 |
+
+动画按**骨骼名字**绑定（`AnimationMixer.clipAction` → `getObjectByName`），所以即使骨架不同，只要动画和模型来自同一 T-Pose 角色就正常。**换模型后请全组重新下载，不要混用。**
+
+### 4. 验证（每次替换后必跑）
+
+```bash
+cd /d/tools/playwright
+node cdp_clean_404_check.js   # 4 NPC 全 [idle,talk,walk]，REAL_404: NONE，ERRORS: NONE
+node cdp_bone_real2.js        # 骨骼四元数运动验证（talk 臂 0.7+ rad / walk 0.3+ rad）
+```
+
+> 缺哪个文件游戏不会崩（自动回落几何人形），但控制台会出现该文件的 404 探测记录。
+
+> ⚠️ **验证方式提醒（2026-08-12）**：判断"模型是否渲染"一律用 **渲染统计 + 像素探针**（见 `cdp_render_compare.js` / `cdp_knight_final.js`），**不要依赖 doubao 对全场景截图的判断**——已实测 doubao 对"白色模型 + 暖光石墙"场景连误报两次"无实体"（而像素探针确认模型正常渲染）。doubao 仅适合辅助看近景/特写。替换模型后跑完上列脚本外，可用：
+> ```bash
+> node cdp_render_compare.js   # 打印化身/NPC 渲染 draw calls + tris（>0 即渲染成功）
+> ```
+
+## 九、当前模型资产状态（2026-08-12 早）
+
+| 角色 | 模型文件 | 动画 | 骨架 | 状态 |
+|------|---------|------|------|:---:|
+| 莉安娜 liana | `liana_tpose.fbx` | idle / talk / walk | Bip001 | ✅ 白模 `#cccccc`，动画齐 |
+| 巴鲁克 baruk | `baruk_tpose.fbx` | idle / talk / walk | mixamorig | ✅ |
+| 玛格丽特 margaret | `margaret_tpose.fbx` | idle / talk / walk | mixamorig | ✅ |
+| 罗格 rog | `rog_tpose.fbx` | idle / talk / walk | mixamorig | ✅ |
+| 玩家 player | `player_tpose.fbx` | idle / walk | — | ✅ |
+
+> **更正（相对本文档第七节）**：莉安娜现用 **Mixamo FBX**（`liana_tpose.fbx`），不再是 Sketchfab Elf Servant（旧 `liana_tpose.glb` 已弃用但未删）。全部角色均为 Mixamo 资产，动画三件套齐备。
+
+**现有测试脚本**（`D:/tools/playwright/`）：`cdp_mixamo_walk_fetch.js`（上传+绑定+下载）、`cdp_mixamo_walk_download.js`（单动画下载）、`cdp_clean_404_check.js`（回归）、`cdp_bone_real2.js`（骨骼运动验证）、`cdp_liana_armtrace.js`（talk 手臂轨迹采样）。
