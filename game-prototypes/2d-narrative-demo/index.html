@@ -48,6 +48,14 @@
   #dlg-name { font-size:16px; color:#ffd78c; font-weight:bold; }
   #dlg-close { margin-left:auto; font-size:11px; color:#777; }
   #dlg-log { height:76px; overflow-y:auto; font-size:12px; color:#aaa; margin:6px 0; }
+  /* 骑砍式话题快捷栏 */
+  #dlg-topics { display:flex; gap:6px; margin:6px 0 2px; flex-wrap:wrap; }
+  .topic-btn {
+    background:#1a1a28; color:#ffd78c; border:1px solid #555;
+    padding:3px 10px; font-size:12px; cursor:pointer; font-family:'Courier New',monospace;
+  }
+  .topic-btn:hover { background:#2e2e42; border-color:#ffd78c; }
+  .topic-btn:disabled { color:#666; border-color:#333; cursor:default; }
   #dlg-log .you { color:#8fd0ff; }
   #dlg-log .npc { color:#ffd78c; }
   #dlg-log .recap { color:#777; font-size:11px; border-left:2px solid #444; padding-left:6px; margin:2px 0 6px; }
@@ -105,6 +113,7 @@
     <span id="dlg-name"></span>
     <span id="dlg-close">ESC 离开</span>
   </div>
+  <div id="dlg-topics"></div>
   <div id="dlg-log"></div>
   <div id="dlg-current"></div>
   <div id="dlg-input-row">
@@ -753,6 +762,7 @@ function openDialogue(id) {
     const npc = npcs[id];
     el('dlg-name').textContent = npc.def.title;
     drawAvatarFor(id);
+    renderTopics(id);
     dlgInput.placeholder = '试着说点什么…（也可以：把这里烧了 / 我相信你 / 你在骗我）';
     // 记忆回顾：重开对话时，把上次他最后说的话显示在窗口顶部
     if (npc.lastReply) {
@@ -772,6 +782,51 @@ function closeDialogue() {
   metaDialogue = false;
   overhearers = [];
   dlg.classList.remove('open');
+  el('dlg-topics').innerHTML = '';
+  topicButtons = [];
+}
+
+// ---------- 骑砍式话题快捷栏（节点分支对话 v1） ----------
+// 关键操作走话题分支（告别/打听/套话/交易），日常仍走输入框自由对话
+const TOPICS = {
+  pawn: [
+    { key: 'leave', label: '告别', cond: () => true, action: 'leave' },
+    { key: 'gossip', label: '打听消息', cond: () => true, line: '城里最近有什么新鲜事？' },
+    { key: 'trade', label: '交易', cond: () => playerSecrets.size > 0 || world.reputation >= 2, line: '我想跟你做笔生意。' },
+  ],
+  mayor: [
+    { key: 'leave', label: '告别', cond: () => true, action: 'leave' },
+    { key: 'gossip', label: '打听消息', cond: () => true, line: '市长大人，这座城最近有什么值得留意的？' },
+    { key: 'probe', label: '试探刻痕', cond: () => world.bellStruck || playerSecrets.has('mayor'), line: '第一道刻痕……是你藏起来的吧？' },
+  ],
+  bard: [
+    { key: 'leave', label: '告别', cond: () => true, action: 'leave' },
+    { key: 'gossip', label: '听故事', cond: () => true, line: '再讲一段这城里的故事吧。' },
+    { key: 'riddle', label: '追问真相', cond: () => world.bellStruck, line: '你说的话，到底哪句是真的？' },
+  ],
+};
+let topicButtons = [];   // 当前对话的按钮（供 setBusy 禁用）
+
+function renderTopics(id) {
+  const box = el('dlg-topics');
+  box.innerHTML = '';
+  topicButtons = [];
+  const list = (TOPICS[id] || []).filter(t => t.cond());
+  for (const t of list) {
+    const b = document.createElement('button');
+    b.className = 'topic-btn';
+    b.textContent = t.label;
+    b.addEventListener('click', () => handleTopic(t));
+    box.appendChild(b);
+    topicButtons.push(b);
+  }
+}
+
+function handleTopic(t) {
+  if (busy) return;
+  if (t.action === 'leave') { closeDialogue(); return; }
+  dlgInput.value = t.line;
+  sendMessage();
 }
 
 function greeting(id) {
@@ -816,6 +871,7 @@ function setBusy(b) {
   busy = b;
   dlgSend.disabled = b;
   dlgInput.disabled = b;
+  for (const btn of topicButtons) btn.disabled = b;
 }
 
 // ---------- 语气 / 兜底 ----------
@@ -1123,9 +1179,11 @@ window.__game = {
   get overhearers() { return [...overhearers]; },
   triggerScratch1, triggerScratch2,
   saveGame, loadGame, clearSave,
+  debugOpenDialogue: id => openDialogue(id), debugCloseDialogue: closeDialogue,
   get lastReplies() { return Object.fromEntries(Object.keys(npcs).map(id => [id, npcs[id].lastReply])); },
   get reputation() { return world.reputation; },
   debugLearnSecret: sid => playerSecrets.add(sid),
+  debugResetSecrets: () => playerSecrets.clear(),
   debugApplyDeltas: applyDeltas,
   debugSetPos: (id, x) => { if (npcs[id]) { npcs[id].x = x; npcs[id].targetX = x; npcs[id].moving = false; npcs[id].dwell = 999; } },
   debugMoveNow: id => { if (npcs[id]) npcs[id].dwell = 0; },

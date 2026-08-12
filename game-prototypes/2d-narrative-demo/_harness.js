@@ -32,7 +32,7 @@ function makeEl(id) {
     id, _listeners: {}, _children: [],
     style: {}, classList: { _s: new Set(), add(...c) { c.forEach(x => this._s.add(x)); }, remove(...c) { c.forEach(x => this._s.delete(x)); }, contains(c) { return this._s.has(c); } },
     dataset: {},
-    value: '', textContent: '', innerHTML: '', placeholder: '', disabled: false,
+    value: '', placeholder: '', disabled: false,
     scrollTop: 0, scrollHeight: 0,
     appendChild(child) { el._children.push(child); return child; },
     focus() {}, blur() {},
@@ -40,6 +40,16 @@ function makeEl(id) {
     dispatch(type, ev) { (el._listeners[type] || []).forEach(fn => fn(ev || { preventDefault() {}, code: '' })); },
     getContext() { if (!el._ctx2d) el._ctx2d = makeCtx2d(); return el._ctx2d; },
   };
+  Object.defineProperty(el, 'innerHTML', {
+    get() { return el._innerHTML || ''; },
+    set(v) { el._innerHTML = v; el._children.length = 0; },
+    configurable: true,
+  });
+  Object.defineProperty(el, 'textContent', {
+    get() { return el._textContent || ''; },
+    set(v) { el._textContent = v; el._children.length = 0; },
+    configurable: true,
+  });
   return el;
 }
 
@@ -253,6 +263,58 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
     frame();
     const bubbleYs = ctx2d._calls.filter(c => c[0] === 'fillText').map(c => c[1][2]).filter(y => y >= 90 && y <= 122);
     if (new Set(bubbleYs).size < 2) throw new Error('气泡未分层，ys=' + JSON.stringify([...new Set(bubbleYs)]));
+  });
+
+  // 15. 骑砍式话题栏
+  await runAsync('话题栏渲染(pawn默认2项)+告别', async () => {
+    G.clearSave(); G.loadGame();
+    G.world.gossipLevel = 0; G.world.scene = 'day7';
+    G.debugResetSecrets(); // 清掉前序测试残留的秘密，验证"新档只有2项"
+    G.debugOpenDialogue('pawn');
+    await new Promise(r => setTimeout(r, 500)); // 等 greeting 打完
+    const box = getEl('dlg-topics');
+    const labels = box._children.map(b => b.textContent);
+    if (JSON.stringify(labels) !== JSON.stringify(['告别', '打听消息'])) throw new Error('labels=' + JSON.stringify(labels));
+    // 告别 → 关闭对话
+    box._children[0].dispatch('click');
+    if (getEl('dialogue').classList.contains('open')) throw new Error('告别未关闭对话');
+    if (G.state !== 'explore') throw new Error('state=' + G.state);
+  });
+
+  await runAsync('话题条件解锁(交易出现)', async () => {
+    G.debugLearnSecret('mayor');
+    G.debugOpenDialogue('pawn');
+    await new Promise(r => setTimeout(r, 500));
+    const box = getEl('dlg-topics');
+    const labels = box._children.map(b => b.textContent);
+    if (!labels.includes('交易')) throw new Error('交易未解锁，labels=' + JSON.stringify(labels));
+  });
+
+  await runAsync('话题"打听消息"走AI', async () => {
+    fetchLog.length = 0;
+    const box = getEl('dlg-topics');
+    const gossip = box._children.find(b => b.textContent === '打听消息');
+    if (!gossip) throw new Error('无打听消息按钮');
+    gossip.dispatch('click');
+    await new Promise(r => setTimeout(r, 400)); // 等 sendMessage 完成
+    const sent = fetchLog.find(f => f.url === '/api/talk' && f.body.text === '城里最近有什么新鲜事？');
+    if (!sent) throw new Error('未发送打听消息，fetchLog=' + JSON.stringify(fetchLog.map(f => f.body.text)));
+    if (!G.npcs.pawn.lastReply) throw new Error('lastReply 未更新');
+    G.debugCloseDialogue();
+  });
+
+  await runAsync('话题"交易"条件线走AI', async () => {
+    fetchLog.length = 0;
+    G.debugOpenDialogue('pawn');
+    await new Promise(r => setTimeout(r, 500));
+    const box = getEl('dlg-topics');
+    const trade = box._children.find(b => b.textContent === '交易');
+    if (!trade) throw new Error('无交易按钮');
+    trade.dispatch('click');
+    await new Promise(r => setTimeout(r, 400));
+    const sent = fetchLog.find(f => f.url === '/api/talk' && f.body.text === '我想跟你做笔生意。');
+    if (!sent) throw new Error('未发送交易，fetchLog=' + JSON.stringify(fetchLog.map(f => f.body.text)));
+    G.debugCloseDialogue();
   });
 
   console.log('\n========== 结果 ==========');
