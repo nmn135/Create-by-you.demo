@@ -127,6 +127,20 @@ const frame = () => { const cb = rafCallbacks[rafCallbacks.length - 1]; if (cb) 
   if (!G) { console.error('✗ window.__game 未暴露'); process.exit(1); }
   const ctx2d = getEl('game').getContext('2d');
 
+  // 1b. 开场背景故事介绍
+  await runAsync('开场背景故事(btn-new→intro→ESC跳过)', async () => {
+    store.delete('seventhDaySave_v2');
+    getEl('btn-new').dispatch('click');   // clearSave + playIntro
+    if (G.state !== 'intro') throw new Error('state=' + G.state + ' 应 intro');
+    const introEl = getEl('intro');
+    if (!introEl.classList.contains('on')) throw new Error('intro 遮罩未显示');
+    await new Promise(r => setTimeout(r, 200));
+    if (!getEl('intro-text').textContent) throw new Error('开场文案未开始');
+    context.document.dispatchKey('Escape');   // 跳过 → explore
+    if (G.state !== 'explore') throw new Error('跳过失败 state=' + G.state);
+    if (G.introRunning) throw new Error('introRunning 应 false');
+  });
+
   // 2. day7 画帧
   run('day7 场景一帧', () => { G.world.scene = 'day7'; G.world.gossipLevel = 0; G.world.sceneTone = 'normal'; frame(); });
 

@@ -96,6 +96,15 @@
   #boot button:hover { background:#3a3a4a; }
   #boot #btn-continue { border-color:#ffd78c; }
   #boot #btn-continue[disabled] { opacity:.35; cursor:default; }
+  /* 开场背景故事介绍 */
+  #intro {
+    position:fixed; inset:0; z-index:45; background:#000;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+    padding:0 12vw;
+  }
+  #intro.on { display:flex; }
+  #intro-text { color:#e8e2d0; font-size:18px; line-height:1.9; letter-spacing:2px; text-align:center; min-height:108px; text-shadow:1px 1px 0 #000; }
+  #intro-sub { color:#666; font-size:12px; letter-spacing:1px; }
 </style>
 </head>
 <body>
@@ -129,6 +138,11 @@
   <p id="boot-sub">一段记忆封存在这座城里。</p>
   <button id="btn-continue">继续记忆</button>
   <button id="btn-new">新的开始</button>
+</div>
+
+<div id="intro">
+  <div id="intro-text"></div>
+  <div id="intro-sub">点击 / ESC 跳过</div>
 </div>
 
 <script>
@@ -729,6 +743,8 @@ function updateHud() {
 let keys = {};
 document.addEventListener('keydown', e => {
   keys[e.code] = true;
+  if (e.code === 'Escape' && introRunning) { e.preventDefault(); endIntro(); return; }
+  if (e.code === 'KeyM') { AudioSys.toggleMute(); banner.textContent = AudioSys.muted ? '声音已关闭（M 开启）' : '声音已开启（M 关闭）'; }
   if (e.code === 'KeyE' && state === 'explore') {
     const id = nearestNpc();
     if (id) { e.preventDefault(); openDialogue(id); }
@@ -1178,6 +1194,43 @@ function drawAvatarFor(id) {
 // ---------- 启动遮罩（继续记忆 / 新的开始） ----------
 const boot = el('boot'), bootSub = el('boot-sub');
 function hideBoot() { boot.style.display = 'none'; state = 'explore'; updateHud(); }
+
+// ---------- 开场背景故事介绍 ----------
+const INTRO_LINES = [
+  '这座城市，已经第七次停在同一日。',
+  '钟楼每天敲十二下。人们在午夜重置，重复同一个第七天。',
+  '有人说，这座城是一个没写完的故事。',
+  '你，一个外乡人，走进城门。你发现自己能说出——剧本之外的话。',
+];
+const intro = el('intro'), introText = el('intro-text');
+let introRunning = false;
+async function playIntro() {
+  if (introRunning) return;
+  introRunning = true;
+  state = 'intro';
+  boot.style.display = 'none';
+  intro.classList.add('on');
+  for (let li = 0; li < INTRO_LINES.length; li++) {
+    if (!introRunning) return;
+    const line = INTRO_LINES[li];
+    introText.textContent = '';
+    for (let i = 0; i < line.length; i++) {
+      introText.textContent += line[i];
+      if (!introRunning) return;
+      await sleep(16);
+    }
+    await sleep(420);
+  }
+  if (introRunning) endIntro();
+}
+function endIntro() {
+  if (!introRunning) return;
+  introRunning = false;
+  intro.classList.remove('on');
+  hideBoot();
+}
+intro.addEventListener('click', () => { if (introRunning) endIntro(); });
+
 // 无档时隐藏「继续记忆」
 if (!localStorage.getItem(SAVE_KEY)) {
   el('btn-continue').disabled = true;
@@ -1185,18 +1238,21 @@ if (!localStorage.getItem(SAVE_KEY)) {
   bootSub.textContent = '还没有记忆。走进这座城，开始你的故事。';
 }
 el('btn-continue').addEventListener('click', () => {
-  if (loadGame()) { hideBoot(); }
+  if (loadGame()) { playIntro(); }
   else {
     bootSub.textContent = '存档损坏或版本不符，将开始新的故事。';
-    setTimeout(() => { clearSave(); hideBoot(); }, 900);
+    setTimeout(() => { clearSave(); playIntro(); }, 900);
   }
 });
-el('btn-new').addEventListener('click', () => { clearSave(); hideBoot(); });
+el('btn-new').addEventListener('click', () => { clearSave(); playIntro(); });
 
 // ---------- 调试钩子 ----------
 window.__game = {
   player, npcs, world, facts,
   get state() { return state; },
+  get introRunning() { return introRunning; },
+  playIntro,
+  get INTRO_LINES() { return [...INTRO_LINES]; },
   get playerSecrets() { return [...playerSecrets]; },
   get overhearers() { return [...overhearers]; },
   triggerScratch1, triggerScratch2,
