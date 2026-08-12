@@ -68,6 +68,15 @@ Mayor (NPC)                     ← npc.tscn 的实例
 | `_physics_process` | 每帧 `loop(dt)` |
 | `Input.is_action_pressed` | `keys[...]` 键位表 |
 
+## AI 协作环境（godot-mcp，已配好）
+
+Claude Code / Claudian 通过 MCP 直接操作 Godot：
+
+- 服务：`npx @coding-solo/godot-mcp`（Node 版，MCP stdio）
+- 注册：`claude mcp add godot --scope user -e GODOT_PATH="D:/EDGE/Godot_v4.7.1-stable_win64.exe/Godot_v4.7.1-stable_win64.exe" -- npx @coding-solo/godot-mcp`
+- 工具：`run_project`（跑项目抓输出）、`get_debug_output`（回传报错）、`add_node`/`create_scene`（直接改场景）、`get_godot_version` 等
+- **改配置后要重启 Claudian 会话**，MCP 工具才会出现在工具列表里
+
 ## 下一步（学完这些再往上加）
 
 - [ ] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）——下节课：按 E 弹出对话面板

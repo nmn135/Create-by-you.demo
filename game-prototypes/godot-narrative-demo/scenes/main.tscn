@@ -1,72 +1,66 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://ch0f8u687uets"]
 
-[ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
+[ext_resource type="Script" uid="uid://dhr5tpddc7b1r" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="PackedScene" path="res://scenes/npc.tscn" id="2_npc"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(12, 16)
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=770788827]
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="ColorRect" parent="." unique_id=1942357645]
 offset_right = 320.0
 offset_bottom = 180.0
 color = Color(0.07, 0.08, 0.12, 1)
 
-[node name="Ground" type="ColorRect" parent="."]
-offset_left = 0.0
+[node name="Ground" type="ColorRect" parent="." unique_id=817741045]
 offset_top = 158.0
 offset_right = 320.0
 offset_bottom = 162.0
 color = Color(0.35, 0.42, 0.55, 1)
 
-[node name="ClockTower" type="ColorRect" parent="."]
+[node name="ClockTower" type="ColorRect" parent="." unique_id=616457966]
 offset_left = 156.0
 offset_top = 20.0
 offset_right = 164.0
 offset_bottom = 158.0
 color = Color(0.3, 0.3, 0.42, 1)
 
-[node name="Bell" type="ColorRect" parent="."]
+[node name="Bell" type="ColorRect" parent="." unique_id=789513039]
 offset_left = 154.0
 offset_top = 14.0
 offset_right = 166.0
 offset_bottom = 20.0
 color = Color(0.79, 0.66, 0.42, 1)
 
-[node name="Mayor" type="Node2D" parent="." instance=ExtResource("2_npc")]
+[node name="Mayor" parent="." unique_id=265407709 instance=ExtResource("2_npc")]
 npc_name = "市长"
 body_color = Color(0.24, 0.29, 0.35, 1)
-stations = PackedVector2Array(52, 150, 150, 150, 208, 150)
 speed = 30.0
 dwell = 2.0
 
-[node name="Pawn" type="Node2D" parent="." instance=ExtResource("2_npc")]
+[node name="Pawn" parent="." unique_id=629958277 instance=ExtResource("2_npc")]
 npc_name = "当铺老板"
 body_color = Color(0.42, 0.33, 0.25, 1)
-stations = PackedVector2Array(250, 150, 272, 150)
 speed = 20.0
 dwell = 3.0
 
-[node name="Bard" type="Node2D" parent="." instance=ExtResource("2_npc")]
-npc_name = "说书人"
+[node name="Bard" parent="." unique_id=857828711 instance=ExtResource("2_npc")]
 body_color = Color(0.35, 0.29, 0.48, 1)
-stations = PackedVector2Array(90, 150, 150, 150)
 speed = 36.0
 dwell = 1.5
 
-[node name="Player" type="CharacterBody2D" parent="."]
+[node name="Player" type="CharacterBody2D" parent="." unique_id=667611577]
 position = Vector2(40, 150)
 script = ExtResource("1_player")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=389858952]
 shape = SubResource("RectangleShape2D_1")
 
-[node name="UI" type="CanvasLayer" parent="."]
+[node name="UI" type="CanvasLayer" parent="." unique_id=35681801]
 
-[node name="Prompt" type="Label" parent="UI"]
+[node name="Prompt" type="Label" parent="UI" unique_id=1786637398]
 visible = false
-offset_left = 0.0
 offset_top = 160.0
 offset_right = 320.0
 offset_bottom = 176.0

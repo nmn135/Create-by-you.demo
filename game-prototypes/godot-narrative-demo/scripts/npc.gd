@@ -24,6 +24,8 @@ var _waiting := 0.0
 func _ready() -> void:
 	# 把自己登记进 "npcs" 组，方便玩家/其他系统找到我
 	add_to_group("npcs")
+	# 出生点 = 第一个站点（否则会从 (0,0) 天花板出生再飞下来）
+	position = stations[0]
 
 func _process(delta: float) -> void:
 	# 到站了？先停留 _waiting 秒
@@ -31,10 +33,12 @@ func _process(delta: float) -> void:
 		_waiting -= delta
 		return
 	# 朝当前目标站点匀速走（move_toward：只往目标挪一格，不会超）
+	# 注意 x/y 都要挪！之前只挪 x，导致 y 一直停在出生点（天花板）
 	var target: Vector2 = stations[_target_index]
 	position.x = move_toward(position.x, target.x, speed * delta)
+	position.y = move_toward(position.y, target.y, speed * delta)
 	# 到站了 → 换下一个站点，开始停留
-	if abs(position.x - target.x) < 0.5:
+	if position.distance_to(target) < 0.5:
 		_target_index = (_target_index + 1) % stations.size()
 		_waiting = dwell
 
