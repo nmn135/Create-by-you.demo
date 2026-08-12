@@ -11,6 +11,8 @@ const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一
 
 # ../ 表示"父节点"（Main），所以这是 Main/UI/Prompt —— 屏幕底部那个提示
 @onready var _prompt: Label = get_node("../UI/Prompt")
+# 对话面板（第三课）：Main/UI/DialoguePanel
+@onready var _dialogue: PanelContainer = get_node("../UI/DialoguePanel")
 
 func _physics_process(_delta: float) -> void:
 	# 输入：←/→ 用 Godot 内置动作，A/D 直接查物理键
@@ -26,12 +28,15 @@ func _process(_delta: float) -> void:
 	_update_prompt()
 
 func _unhandled_input(event: InputEvent) -> void:
-	# E 键：物理键直查（输入映射下节课再讲）
+	# E 键：物理键直查（输入映射以后再讲）
 	if event is InputEventKey and event.pressed and not event.echo \
-			and event.physical_keycode == KEY_E and _prompt.visible:
+			and event.physical_keycode == KEY_E:
+		if _dialogue.visible:
+			_dialogue.advance()  # 对话开着 → E 当"下一句"
+			return
 		var npc := _nearest_npc()
-		if npc:
-			_prompt.text = "对话面板下节课做！" + npc.npc_name + " 在等你"
+		if npc and _prompt.visible:
+			_dialogue.open(npc.npc_name, npc.lines)
 
 func _update_prompt() -> void:
 	# 离最近的 NPC 足够近 → 亮出"E 交谈"，并显示对方名字
