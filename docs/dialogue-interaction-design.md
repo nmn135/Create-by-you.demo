@@ -104,8 +104,8 @@ tags: [game-design, sealed-hall, dialogue, interaction, research]
 | disco-api | github.com/msyavuz/disco-api | 对话数据模型 actor/conversant 可直接照搬 |
 
 ### 落地建议（下一轮）
-- UI：**不切全屏**，保持 3D 场景 + 底部对话日志（流式打字）+ 顶部意图快捷按钮（交易/告别）作骑砍式锚点
-- 相机：对话开始 lerp 推近到对方脸部 + lookAt 锁视线
-- 触发：接近半径 + E 键（骑砍/老滚通用）
+- UI：**不切全屏**，保持游戏画面 + 底部对话日志（流式打字）+ 顶部意图快捷按钮（交易/告别）作骑砍式锚点
+- 视角：对话开始推近到对方特写 + 锁定视线
+- 触发：接近半径 + 交互键（骑砍/老滚通用）
 - 多 NPC：只与触发者对话，其余围观（AI 后置注入旁白）
 

@@ -3,54 +3,42 @@
 > 本文件是**协作事实**（随 git 同步，双方 AI 都读）。启动命令、资源约定、开发规则在此，比 memory 更硬。
 
 ## 项目是什么
-以自然语言对话驱动的 3D 叙事游戏原型。玩家在浏览器里自由输入对话，通过说话改变 NPC 关系、揭露秘密、走向不同结局。
+以自然语言对话驱动的叙事游戏 demo。玩家在 2D 像素画面里与 NPC 自由对话，通过说话改变 NPC 关系、揭露秘密、走向不同结局。
+
+## 当前方向（2026-08-13 起）
+- **只做 2D 叙事 demo《第七天》**：`game-prototypes/2d-narrative-demo/`（Canvas 2D + Node 服务 + DeepSeek AI）
+- **3D 方案已全部删除**（2026-08-13）：3d-prototype/、server.py、Mixamo/Sketchfab 资产、相关文档均已移除，勿再恢复或引用。
 
 ## 启动命令（必须）
 ```bash
-cd game-prototypes
-pip install openai          # 首次
-python server.py            # 启动服务器（端口 8080）
-# 浏览器打开 http://localhost:8080
+cd game-prototypes/2d-narrative-demo
+node server.js        # 启动服务器（端口 8890）
+# 浏览器打开 http://localhost:8890
 ```
-- `--no-ai` 参数 = 离线模拟模式（自动化测试用）：`python server.py --no-ai`
+- 引擎：DeepSeek `deepseek-chat`（优先读 `DEEPSEEK_API_KEY`，兜底 doubao）
+- 详见 `2d-narrative-demo/README.md`
 
 ## 架构
 ```
-浏览器 Three.js（3d-prototype/index.html，单文件） ←HTTP/JSON→ server.py ←→ text-prototype/ 状态机 + DeepSeek API
+浏览器 Canvas 2D（2d-narrative-demo/index.html） ←HTTP/JSON→ server.js ←→ DeepSeek API
 ```
-- **状态机**：`text-prototype/src/state_machine.py`（纯 Python，确定性，不依赖 AI）
-- **AI 管线**：`text-prototype/src/ai_pipeline.py`（意图解析 Pro + 回复生成 Flash）
-- **3D 前端**：`3d-prototype/index.html`（单文件）+ `3d-prototype/src/*.js` 模块（models/guidance/markers/ui_drag/fps_controller/atmosphere/props/settings）
+- 对话引擎：`2d-narrative-demo/server.js`（多 NPC persona、意图解析、回复生成）
+- 游戏逻辑：`2d-narrative-demo/index.html`（像素渲染、NPC 站点巡游、隔墙有耳、失言演出）
 
-## 资源约定（禁止违反）
-- **模型放** `game-prototypes/assets/models/`：`<角色>_tpose.fbx/.glb` + `<角色>_idle.fbx` + `<角色>_talk.fbx`
-- **材质放** `game-prototypes/assets/textures/`
-- **禁止删除 assets/ 下任何资源**（模型/纹理是素材库，删了游戏就缺）
-- Mixamo 模型必须 **With Skin**（否则只有骨骼无网格，角色不可见）；动画才用 Without Skin
-- 素材库备份在 `D:\SealedHallAssets\`（本地，不随 git）
+## 文字原型（保留，作状态机参考）
+- `text-prototype/`：Python 终端原型，验证失言系统（状态机/AI 管线/结局）。非 3D，保留作逻辑参考。
+- 测试：`test_state_machine.py`（30/30）· `tests/test_endings.py`（46/46）
 
-## 测试（改完必须跑）
-```bash
-cd game-prototypes
-python -X utf8 integration_test.py        # 16 项端到端
-cd text-prototype
-python -X utf8 test_state_machine.py      # 30 项
-python -X utf8 tests/test_endings.py      # 46 项
-```
+## 资源约定
+- 所有 2D demo 资产放 `game-prototypes/2d-narrative-demo/` 内
+- 禁止再引入 3D 相关资源（模型/贴图/引擎）
 
 ## 开发规则
 - 中文优先（所有注释/回复/UI）
-- 视觉问题用截图 + 豆包视觉确认，不靠猜
-- 全视角控制器 `src/fps_controller.js`：C 键 fps↔tps，WASD 移动 + Shift 奔跑 + 空格跳 + Z 蹲 + E 交互 + N 推进
-- 输入交互：Enter 进输入模式，Esc 退出清空（避免 WASD 被输入框吃）
-- ponytail 原则：最简方案，YAGNI，能抄开源就抄，不写过度工程代码
-
-## 调试钩子（自动化验证用）
-- `window.__fpsController`：视角控制器实例（mode/pos/euler）
-- `window.__getModelStates()`：各角色模型状态（current 动画/clips）
-- `window.__getModelManager()`：模型管理器
+- 视觉问题用截图确认，不靠猜
+- ponytail 原则：最简方案，YAGNI，不写过度工程代码
 
 ## 已知待办
-- 更多动作动画（攻击/施法）
+- 2D demo 玩法打磨（NPC 闲聊频率/气泡可读性）
 - 节点分支对话（骑砍式话题树）
-- Electron 本地版（可选）
+- 剧情分支与结局演出
