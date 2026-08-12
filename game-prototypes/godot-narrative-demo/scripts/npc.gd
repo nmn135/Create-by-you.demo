@@ -1,12 +1,12 @@
-extends Node2D
+extends CharacterBody2D
 ## NPC —— 站点巡游（对应 Canvas 版 npcs[] 的站点系统）
 ##
-## 这节课的三招新武功：
-##   1. @export：变量直接在编辑器 Inspector 面板里调
-##      （选中 main.tscn 里的任一 NPC 节点，看右边面板）
-##   2. move_toward()：匀速走向目标点
-##   3. 组（group）：_ready() 里 add_to_group("npcs")，
-##      玩家就能用 get_nodes_in_group("npcs") 找到所有 NPC
+## 第五课（碰撞）新招：
+##   1. 根节点从 Node2D 升级成 CharacterBody2D（会动的物理体）
+##   2. 移动从"直接挪 position"改成 velocity + move_and_slide()
+##      —— 和玩家同一套 API，撞到东西会被挡住
+##   3. 碰撞层：NPC 在第 2 层（collision_layer=2），掩码 collision_mask=0（谁都不撞）
+##      → 玩家撞不动 NPC；但 NPC 之间不会互相挤成一坨
 
 @export var npc_name := "说书人"                     # 显示名
 @export var body_color := Color("#5A4A7A")           # 衣服颜色
@@ -28,20 +28,27 @@ func _ready() -> void:
 	# 出生点 = 第一个站点（否则会从 (0,0) 天花板出生再飞下来）
 	position = stations[0]
 
-func _process(delta: float) -> void:
-	# 到站了？先停留 _waiting 秒
+func _physics_process(delta: float) -> void:
+	# 注意：物理体（CharacterBody2D）的移动要在 _physics_process 里做，
+	# 因为 move_and_slide() 依赖固定 60 次/秒的物理帧
 	if _waiting > 0.0:
 		_waiting -= delta
+		velocity = Vector2.ZERO  # 停留时别还留着旧速度
 		return
-	# 朝当前目标站点匀速走（move_toward：只往目标挪一格，不会超）
-	# 注意 x/y 都要挪！之前只挪 x，导致 y 一直停在出生点（天花板）
+
 	var target: Vector2 = stations[_target_index]
-	position.x = move_toward(position.x, target.x, speed * delta)
-	position.y = move_toward(position.y, target.y, speed * delta)
+	var to_target := target - position
+
 	# 到站了 → 换下一个站点，开始停留
-	if position.distance_to(target) < 0.5:
+	if to_target.length() < 0.5:
 		_target_index = (_target_index + 1) % stations.size()
 		_waiting = dwell
+		velocity = Vector2.ZERO
+		return
+
+	# 朝目标匀速走：velocity = 方向 × 速度；move_and_slide() 负责"撞到就停"
+	velocity = to_target.normalized() * speed
+	move_and_slide()
 
 func _draw() -> void:
 	# 像素小人：换个 body_color 就是另一个人

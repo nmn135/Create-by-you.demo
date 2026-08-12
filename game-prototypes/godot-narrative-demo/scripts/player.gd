@@ -6,6 +6,8 @@ extends CharacterBody2D
 ##   2. _process：每帧刷新提示文字
 ##   3. _unhandled_input：处理"没人接手的"输入事件（E 键）
 ##   4. 组（group）：get_nodes_in_group("npcs") 找到所有 NPC
+##   5. 碰撞（第五课）：玩家 collision_layer=1 / collision_mask=2
+##      —— 玩家能撞到"第 2 层"的 NPC，撞不动他们（这两个数在 main.tscn 里设）
 
 const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一致
 
