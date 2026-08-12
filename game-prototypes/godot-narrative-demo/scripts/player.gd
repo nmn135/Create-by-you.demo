@@ -1,13 +1,10 @@
 extends CharacterBody2D
 ## 玩家 —— 第七天里的外乡人（占位像素小人）
 ##
-## 这节课新增（结合"场景树"一起看）：
-##   1. @onready：等树准备好了再取节点引用（get_node 相对路径）
-##   2. _process：每帧刷新提示文字
-##   3. _unhandled_input：处理"没人接手的"输入事件（E 键）
-##   4. 组（group）：get_nodes_in_group("npcs") 找到所有 NPC
-##   5. 碰撞（第五课）：玩家 collision_layer=1 / collision_mask=2
-##      —— 玩家能撞到"第 2 层"的 NPC，撞不动他们（这两个数在 main.tscn 里设）
+## 第六课（感应区 Area2D）：
+##   不再用"横向距离<20"的土办法判断能不能说话，
+##   改成问 NPC："你的感应圈里有人吗？"（player_near）
+##   NPC 的 Area2D 用 body_entered/body_exited 信号自己算好了。
 
 const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一致
 
@@ -15,6 +12,10 @@ const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一
 @onready var _prompt: Label = get_node("../UI/Prompt")
 # 对话面板（第三课）：Main/UI/DialoguePanel
 @onready var _dialogue: PanelContainer = get_node("../UI/DialoguePanel")
+
+func _ready() -> void:
+	# 第六课：加入 "player" 组，NPC 的感应区靠它认出"这是玩家"
+	add_to_group("player")
 
 func _physics_process(_delta: float) -> void:
 	# 第四课：输入映射。代码不再管具体键，只问"这个动作被按了吗"
@@ -36,29 +37,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _dialogue.visible:
 			_dialogue.advance()  # 对话开着 → interact 当"下一句"
 			return
-		var npc := _nearest_npc()
-		if npc and _prompt.visible:
+		var npc := _nearby_npc()
+		if npc:
 			_dialogue.open(npc.npc_name, npc.lines)
 
 func _update_prompt() -> void:
-	# 离最近的 NPC 足够近 → 亮出"E 交谈"，并显示对方名字
-	var npc := _nearest_npc()
-	if npc and abs(npc.position.x - position.x) < 20.0:
+	# 第六课：有人感应到我 → 亮出"E 交谈"，并显示对方名字
+	var npc := _nearby_npc()
+	if npc:
 		_prompt.text = "E 交谈 · " + npc.npc_name
 		_prompt.visible = true
 	else:
 		_prompt.visible = false
 
-func _nearest_npc() -> Node2D:
-	# 遍历 "npcs" 组里的所有节点，找横向距离最近的
-	var best: Node2D = null
-	var best_d := INF
+# 第六课：遍历所有 NPC，找"感应圈里有玩家"的那个。
+# 距离到底近不近，是 NPC 的 Area2D 用信号帮你算好的，这里不用再量。
+func _nearby_npc() -> Node2D:
 	for n in get_tree().get_nodes_in_group("npcs"):
-		var d: float = abs(n.position.x - position.x)
-		if d < best_d:
-			best_d = d
-			best = n
-	return best
+		if n.player_near:
+			return n
+	return null
 
 func _draw() -> void:
 	# 占位像素小人：蓝衣 + 头 + 腰带 + 脚（和 Canvas 版同一套配色）

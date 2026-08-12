@@ -1,12 +1,11 @@
 extends CharacterBody2D
 ## NPC —— 站点巡游（对应 Canvas 版 npcs[] 的站点系统）
 ##
-## 第五课（碰撞）新招：
-##   1. 根节点从 Node2D 升级成 CharacterBody2D（会动的物理体）
-##   2. 移动从"直接挪 position"改成 velocity + move_and_slide()
-##      —— 和玩家同一套 API，撞到东西会被挡住
-##   3. 碰撞层：NPC 在第 2 层（collision_layer=2），掩码 collision_mask=0（谁都不撞）
-##      → 玩家撞不动 NPC；但 NPC 之间不会互相挤成一坨
+## 第六课（感应区 Area2D）新招：
+##   1. 每个 NPC 挂一个透明感应圈（Area2D + CircleShape2D）
+##   2. 玩家走进来 → body_entered 信号 → player_near = true
+##      玩家走出去 → body_exited 信号 → player_near = false
+##   3. 玩家不再"算距离"，直接问：谁感应到我了？（player_near）
 
 @export var npc_name := "说书人"                     # 显示名
 @export var body_color := Color("#5A4A7A")           # 衣服颜色
@@ -21,12 +20,26 @@ extends CharacterBody2D
 
 var _target_index := 0
 var _waiting := 0.0
+var player_near := false   # 第六课：玩家在感应圈里吗？（Area2D 信号在更新它）
 
 func _ready() -> void:
 	# 把自己登记进 "npcs" 组，方便玩家/其他系统找到我
 	add_to_group("npcs")
 	# 出生点 = 第一个站点（否则会从 (0,0) 天花板出生再飞下来）
 	position = stations[0]
+	# 第六课：把感应区的"有人进来/出去"两个信号，连到下面的方法
+	$Area2D.body_entered.connect(_on_area_body_entered)
+	$Area2D.body_exited.connect(_on_area_body_exited)
+
+func _on_area_body_entered(body: Node2D) -> void:
+	# 感应圈只对"玩家"这层开着（Area2D 的 mask=1），
+	# 进来的本该就是玩家；再用组确认一遍，养成好习惯
+	if body.is_in_group("player"):
+		player_near = true
+
+func _on_area_body_exited(body: Node2D) -> void:
+	if body.is_in_group("player"):
+		player_near = false
 
 func _physics_process(delta: float) -> void:
 	# 注意：物理体（CharacterBody2D）的移动要在 _physics_process 里做，
