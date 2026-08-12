@@ -253,4 +253,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 碰撞：NPC 也带碰撞盒，玩家不能穿人 —— 第五课完成 ✅
 - [x] 感应区：Area2D 替代"距离土办法"触发交谈 —— 第六课完成 ✅
 - [x] 对话分支：选项 + 动态按钮 —— 第七课完成 ✅
+- [ ] 第八课（待办）：台词搬进 JSON 文件（`dialogues.json`，NPC 启动时读）——**告别 Inspector 手敲字典**
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）

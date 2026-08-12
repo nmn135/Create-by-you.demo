@@ -1,24 +1,23 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://bi8bh3fx5w48c"]
 
-[ext_resource type="Script" path="res://scripts/npc.gd" id="1_npc"]
+[ext_resource type="Script" uid="uid://bvmxto5614sjf" path="res://scripts/npc.gd" id="1_npc"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_npc"]
 size = Vector2(10, 14)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_area"]
-radius = 22.0
+radius = 40.0
 
-[node name="NPC" type="CharacterBody2D"]
+[node name="NPC" type="CharacterBody2D" unique_id=884641258]
 collision_layer = 2
 collision_mask = 0
 script = ExtResource("1_npc")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1602821159]
 position = Vector2(0, -1)
 shape = SubResource("RectangleShape2D_npc")
 
-[node name="Area2D" type="Area2D" parent="."]
-collision_mask = 1
+[node name="Area2D" type="Area2D" parent="." unique_id=562374717]
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Area2D"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Area2D" unique_id=775687807]
 shape = SubResource("CircleShape2D_area")
