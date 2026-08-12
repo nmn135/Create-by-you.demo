@@ -9,6 +9,19 @@
 - **只做 2D 叙事 demo《第七天》**：`game-prototypes/2d-narrative-demo/`（Canvas 2D + Node 服务 + DeepSeek AI）
 - **3D 方案已全部删除**（2026-08-13）：3d-prototype/、server.py、Mixamo/Sketchfab 资产、相关文档均已移除，勿再恢复或引用。
 
+## 如何同步最新代码（好友侧必读）
+主仓库：`https://github.com/nmn135/Create-by-you.demo`。好友本地仓库是 fork/镜像，落后时这样同步：
+
+- **一键同步**：双击根目录 `同步更新.bat`（自动配置 upstream → 拉取 → 快进合并）
+- **或手动**：
+  ```bash
+  git remote add upstream https://github.com/nmn135/Create-by-you.demo.git  # 仅首次
+  git fetch upstream && git merge upstream/main
+  ```
+- **每次开工前先同步，再改代码**。改动后不要 push 到主仓库 main，走 fork + PR。
+- 本地有未提交改动时不要运行同步，先 commit 或 stash。
+- `.env` 不入库（gitignore 已排除），好友各自配置本地 key。
+
 ## 启动命令（必须）
 ```bash
 cd game-prototypes/2d-narrative-demo

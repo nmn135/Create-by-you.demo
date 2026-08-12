@@ -22,5 +22,6 @@
 
 - 协作规则见 [AGENTS.md](AGENTS.md)（随 git 同步，双方 AI 都读）
 - 交接文档见 [HANDOFF.md](HANDOFF.md)
+- 好友侧同步最新代码：双击根目录 `同步更新.bat`（自动从主仓库快进合并）
 
 > 2026-08-13：3D 方案（3d-prototype、Mixamo 资产等）已全部删除，项目专注 2D 叙事方向。
