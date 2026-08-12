@@ -96,13 +96,18 @@ def parse_intent(user_input: str, context: str = "") -> dict:
         messages.append({"role": "system", "content": f"当前语境：{context}"})
     messages.append({"role": "user", "content": user_input})
 
+    # 第 1 次用 INTENT_MODEL（v4-pro，质量高）；v4-pro 08-12 实测持续空响应/卡顿，
+    # 故第 2 次起切 REPLY_MODEL（v4-flash）兜底，并给每次请求 8s 超时上限——
+    # 防止单次卡死拖过前端 15s abort（UI 聊天曾因此收不到回复）。
+    models = [INTENT_MODEL, REPLY_MODEL, REPLY_MODEL]
     for attempt in range(3):
         try:
             response = _get_client().chat.completions.create(
-                model=INTENT_MODEL,
+                model=models[attempt],
                 messages=messages,
                 temperature=0.1,  # 低温度保证稳定
                 max_tokens=300,
+                timeout=8,
             )
             text = response.choices[0].message.content.strip()
             # 清理可能的 markdown 包裹
