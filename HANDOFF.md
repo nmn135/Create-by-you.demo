@@ -26,6 +26,14 @@ tags: [game-design, sealed-hall, handoff]
 | 玩法打磨 | 气泡截断/防重叠/对比度，闲聊频率与台词扩充 | ✅ |
 | 节点分支对话 | v1：骑砍式话题快捷栏（告别/打听/交易/套话，条件解锁） | ✅ |
 | 对话相机 | 对话推近 NPC（lerp 缓动） | ✅ |
+| 开场背景故事 | #intro 打字机四行 + 点击/ESC 跳过 | ✅ |
+| 像素肖像 48×48 | 程序化逐 NPC + `portrait_<id>.png` 覆盖 | ✅ |
+| 背景音乐 + 音效 | WebAudio 程序化 BGM + SFX + M 静音持久化 | ✅ |
+| 引导移动 walk | `walkToBell`：NPC 带路 + 玩家跟随 + 相机跟随 | ✅ |
+| 钟楼/门参数 | `BELL_POS`/`DOOR_POS` 常量（用户可手动微调） | ✅ |
+| 刻痕三「作者之墨归位」 | 当铺买话 → 说书人归位 → 钟楼演出 | ✅ |
+| 四层剧场（meta 终局） | 感官/叙事（回响玩家的话）/世界/诚实（作者坦白） | ✅ |
+| 无限结局 | 客户端定世界线 + `/api/endgame` LLM 现写 epilogue + 本地兜底 | ✅ |
 | 2D 清晰度修复 | 3× 分辨率渲染（960×540）+ 字体加大 | ✅ |
 | 2D 对话引擎 | DeepSeek `deepseek-chat` 优先，doubao 兜底 | ✅ |
 | 文字原型 | Python 终端，失言系统/状态机逻辑参考 | ✅ 保留 |
@@ -45,9 +53,11 @@ node server.js    # 端口 8890
 浏览器 Canvas 2D（2d-narrative-demo/index.html） ←HTTP/JSON→ server.js ←→ DeepSeek API
 ```
 
-- 对话引擎：`2d-narrative-demo/server.js`（多 NPC persona、意图解析、回复生成）
-- 游戏逻辑：`2d-narrative-demo/index.html`（像素渲染、NPC 站点巡游、隔墙有耳、失言演出、话题快捷栏、对话相机）
+- 对话引擎：`2d-narrative-demo/server.js`（多 NPC persona、意图解析、回复生成、`/api/talk`、`/api/endgame`）
+- 游戏逻辑：`2d-narrative-demo/index.html`（像素渲染、NPC 站点巡游、隔墙有耳、话题快捷栏、对话相机、开场/肖像/BGM/引导移动/刻痕三/四层剧场/结局）
 - AI 引擎：DeepSeek `deepseek-chat`，key 读 `DEEPSEEK_API_KEY`（`2d-narrative-demo/.env` 或环境变量）
+- 音频：WebAudio 程序化 BGM/SFX（`AudioSys`），美术出 `audio/bgm_day7.ogg`/`bgm_day2.ogg` 即文件优先
+- 肖像：美术出 `portrait_mayor.png`/`portrait_pawn.png`/`portrait_bard.png`/`portrait_meta.png` 即自动覆盖程序化头像
 
 ## 五、测试（验收标准）
 
@@ -62,7 +72,7 @@ python -X utf8 tests/test_dialogue_scenarios.py  # 需 DEEPSEEK_API_KEY
 
 ```bash
 cd D:\Create by you.demo\game-prototypes\2d-narrative-demo
-node _harness.js                          # 24/24
+node _harness.js                          # 39/39
 ```
 
 ## 六、关键约定
@@ -70,11 +80,13 @@ node _harness.js                          # 24/24
 - **中文优先**（所有注释/回复/UI）
 - 3D 方案已删除，**勿再引入 3D 资源或恢复旧文件**
 - 2D demo 资产放 `2d-narrative-demo/` 内
-- 调试钩子在 `window.__game`（含 debugOpenDialogue/debugResetSecrets/cam 等）
+- 调试钩子在 `window.__game`（含 debugOpenDialogue/debugResetSecrets/debugSetPos/debugSetInk/cam/bellPos/doorPos/audio/classifyEnding/endGame 等）
 - `_harness.js` 是 DOM/Canvas 桩回归测试，改动 index.html 后跑一遍
+- 钟/门位置手动调 `BELL_POS`/`DOOR_POS`（index.html 顶部）；背景图**用户自己负责**，AI 不生成
+- `server.js` 的 `getConfig()`/`PROVIDERS`（DeepSeek/doubao 双引擎）勿动；端口固定 8890
 
-## 七、待办
+## 七、待办 / 已知边界
 
-- 剧情分支与结局演出（主线尚未收尾）
-- 节点分支对话 v2（真正的脚本节点图 + 分支跳转，替代"话题路由 AI"）
+- 主线（刻痕三 + 四层剧场 + 四结局）已收尾；后续可扩：反叛者/神官 NPC、刻痕 4-7、节点分支对话 v2（脚本节点图）
 - 试玩后按 PLAYTEST_CHECKLIST 回归
+- 背景图、肖像 PNG、BGM ogg 等美术资产待用户提供（程序化兜底已就位）
