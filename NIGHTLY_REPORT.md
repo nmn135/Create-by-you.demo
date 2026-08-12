@@ -413,3 +413,44 @@ python -X utf8 tests/test_endings.py      # 46 项
 - 已知遗留：NPC 占位模型（rog 暗红图元，待 Mixamo 换模，task #10）
 
 **生效**：刷新页面即生效（用户吃饭回来 reload 即可听音乐 + 中央板子已消失）。
+
+---
+
+### 21. 2026-08-13 夜间主工作流（2D demo 清晰度/速度 + 3D 氛围 + AI 管线 + 资产索引）
+
+> **摘要**：用户试玩 2D demo《第七天》反馈「太糊看不清 + 走近交谈两个字都很糊 + NPC 自己说话」，本轮三线并发修复：① 2D demo **3 倍分辨率渲染**（320×180→960×540）+ 字体加大，文字不再糊；② 对话引擎**从 doubao 换到 DeepSeek**（实测原始延迟 **251ms** vs doubao 负载高时 15-24s，端到端 ~3s），doubao 降级为兜底；③ 3D 场景加**烛光尘埃粒子 + 几何人形待机呼吸**；④ AI 管线修掉 `deepseek-v4-pro/flash` 无效模型名 bug + Prompt 文件模板化；⑤ 资产索引扩充到 250 行。
+
+**1. 2D demo 清晰度修复（Task #49 子项）**
+- 根因：320×180 内部分辨率被 CSS 拉伸全屏 → 像素点变模糊方块，6-8px 字完全不可读
+- 修复：`RENDER_SCALE=3` → 内部 960×540，`ctx.setTransform(3,0,0,3,0,0)` 整体放大；字体 6px→8px、8px→10px，气泡/提示框同步加大
+- 验证：`2d_blur_check.js` 确认 canvas 960×540、端到端 ~3.2s
+
+**2. 对话引擎切换 DeepSeek（Task #49 子项）**
+- 用户问「换个 key 就能变快吗」→ 实测 doubao 负载 15-24s，DeepSeek raw 251ms
+- `server.js` 改造 `PROVIDERS` 双 Provider：优先 `deepseek-chat`（读 `DEEPSEEK_API_KEY`/`.env`），doubao 兜底（读 `.env` 或 snapshot key 文件）——好友 fork 机器无 DeepSeek key 时自动用 doubao
+- 启动日志明确显示 `对话引擎: DEEPSEEK`
+
+**3. 3D 场景增强（Task #49）**
+- `src/atmosphere.js`：220 粒烛光尘埃（AdditiveBlending 软圆点贴图，上浮+正弦漂移+顶部回绕）
+- `index.html`：几何人形 NPC 待机呼吸（scale.y 1±0.018 正弦，按名字哈希错相）；`window.__atmosphere` 暴露供回归脚本
+- 回归：`3d_smoke.js` SMOKE OK，`renderer.info.render.triangles` **22k**（证明真实渲染）
+
+**4. AI 管线优化（Task #51）**
+- `config.py`：`INTENT_MODEL/REPLY_MODEL` 废弃无效的 `deepseek-v4-pro/flash` → 统一 `deepseek-chat`
+- `ai_pipeline.py`：Prompt 从 `prompts/*.txt` 加载（单源真值）；回复生成启用完整 v2 模板（情绪→微反应、失言 A/B/C、在场感知、对话记忆、17 个模板变量）；所有 API 调用 `timeout=8`
+- 实测：意图解析 1-4s、回复生成 ~1.3s
+
+**5. 资产收集（Task #50）**
+- `ASSET_LINKS.md` 148→**250 行**：Mixamo 动画快捷搜索 7 条、Sketchfab 哥特家具/烛台/书柜/石柱 19 条（含 CC0 推荐）、Poly Haven HDRI/PBR 直达链接 9 条、Quaternius/Kenney/OpenGameArt CC0 包；已标注验证方式与无法确认项，无编造链接
+
+**6. 失言系统测试（Task #52，全绿）**
+- `test_state_machine.py` **30/30**（失言判定/关系变化/结局/悄悄话惩罚/出场节奏）
+- `tests/test_endings.py` **46/46**（5 结局全路径 + 状态缺口回归）
+- `tests/test_dialogue_scenarios.py` **3 策略/9 轮/0 失言**（DeepSeek 真实对话：rog +31、margaret tense、baruk 壁刻线索正常）
+
+**7. 文档更新（Task #53）**
+- `text-prototype/README.md`：模型名修正 + 结构/失言系统/验证章节更新
+- `characters/封印之殿 — 项目索引.md`：阶段表更新（含 2D demo、失言系统完成态）、模型行修正
+- 本报告追加 21 节
+
+**回归状态**：3D 服务器 8080 运行中（SMOKE OK / 22k 三角形）；2D 服务器 8890 运行中（引擎 DEEPSEEK）。已提交并推送 `0eebda4`（2D 修复）、`e3ce4d6`（3D 增强）、`3d0f862`（AI 管线），本轮文档/资产改动待提交。
