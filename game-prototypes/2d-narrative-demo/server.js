@@ -3,6 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const PORT = process.env.PORT || 8890;
 const ROOT = __dirname;
@@ -105,6 +106,33 @@ const SECRETS = {
 const TIER = ['低', '中', '高'];
 const tier = v => TIER[v] || '中';
 
+// 全局名声 → 分段描述（范围 -10~10）
+function repLabel(v) {
+  if (v >= 8) return '城中无人不知你的名字';
+  if (v >= 3) return '你在城里小有名气';
+  if (v >= 1) return '有人悄悄议论你';
+  if (v <= -8) return '你已是全城的忌讳';
+  if (v <= -3) return '许多人躲着你走';
+  if (v <= -1) return '有人对你指指点点';
+  return '一个平平无奇的外乡人';
+}
+
+// 把玩家名声/已解秘密渲染成 NPC 的对话分支条件
+function buildUnlocks(npcId, body, rep) {
+  const out = [];
+  const psecrets = body.playerSecretsKnown || [];
+  if (npcId === 'pawn') {
+    const canSell = rep >= 2 || psecrets.length >= 1;
+    if (canSell) out.push('玩家名声够格/已知其他秘密，你判断这单生意值得做：本轮可主动暗示或兜售市长的秘密，愿给时 secret 填"mayor"。');
+    else out.push('你还拿不准玩家值不值得做这单生意：本轮最多试探性报价，绝不透露市长的秘密（secret 必须为 null）。');
+  }
+  if (npcId === 'bard') {
+    const sk = body.secretsKnownBy || {};
+    if ((sk.bard || []).includes('mayor')) out.push('你听说了市长的秘密（市长藏起了第一道刻痕）：可隐晦点破，看玩家是否接得住。');
+  }
+  return out;
+}
+
 function buildSystemPrompt(body) {
   const npcId = body.npc || 'mayor';
   const metaMode = !!body.metaMode;
@@ -115,8 +143,15 @@ function buildSystemPrompt(body) {
 
   if (!metaMode) {
     lines.push(`玩家对你的关系：信任${tier(rel.trust)}/恐惧${tier(rel.fear)}/好感${tier(rel.like)}/怀疑${tier(rel.suspect)}。`);
+    const rep = Number(body.reputation) || 0;
+    lines.push('玩家的名声：' + repLabel(rep) + '（名声值' + rep + '，范围-10~10）。');
     const heard = body.heard || [];
     lines.push(heard.length ? `你听说：${heard.slice(-4).join('；')}。` : '你还没听到玩家有什么值得记住的话。');
+    // 记忆：当前 NPC 知道的事实，回灌给模型（限5条，每条≤40字，控 token）
+    const mem = (body.npcKnownFacts || []).slice(-5)
+      .filter(s => typeof s === 'string' && s.trim())
+      .map(s => (s.trim().length > 40 ? s.trim().slice(0, 40) + '…' : s.trim()));
+    lines.push(mem.length ? '你的记忆：' + mem.join('；') + '。' : '你还没记住什么值得放进心里的话。');
     const known = (body.secretsKnownBy && body.secretsKnownBy[npcId]) || [];
     lines.push(known.length ? `你知道的秘密：${known.map(s => SECRETS[s]).join('；')}。` : '你不知道任何角色的秘密。');
     const wsParts = [];
@@ -125,11 +160,15 @@ function buildSystemPrompt(body) {
     if (ws.gossipLevel) wsParts.push('城里在传流言');
     if (ws.doorVisible) wsParts.push('出现一扇本不存在的门');
     lines.push('世界：' + (wsParts.join('，') || '第七天如常') + '。');
+    // 解锁判定：把条件布尔渲染进 persona 提示
+    const unlocks = buildUnlocks(npcId, body, rep);
+    if (unlocks.length) lines.push('解锁判定：' + unlocks.join(' '));
   }
 
   lines.push('规则：中文1-4句，保持角色，不跳出。');
-  lines.push('只输出一个JSON对象，无其它文字：{"reply":"回复","facts":["新事实"],"deltas":{"mayor":{"trust":0,"fear":0,"like":0,"suspect":0}},"node":null,"secret":null}');
-  lines.push('deltas值只取-1/0/+1，id限mayor/pawn/bard，玩家有明显善意/恶意时至少让trust或suspect动一下，别全是0。node：玩家首句剧本外="scratch1"(若钟未破)；向不知道某秘密的人泄密="scratch2"。secret：愿告知秘密则填所属者id(mayor/pawn/bard)，否则null。');
+  lines.push('记忆规则：自然引用你记得的往事或玩家说过的话（"你上次不是说…"），每次最多提1-2条，别机械复述，别一次性全抖出来。');
+  lines.push('只输出一个JSON对象，无其它文字：{"reply":"回复","facts":["新事实"],"repDelta":0,"deltas":{"mayor":{"trust":0,"fear":0,"like":0,"suspect":0}},"node":null,"secret":null}');
+  lines.push('deltas值只取-1/0/+1，id限mayor/pawn/bard，玩家有明显善意/恶意时至少让trust或suspect动一下，别全是0。repDelta只取-1/0/+1，衡量玩家在整座城的"名声"（范围-10~10），只在出现足以被全城议论的大事时动（当面戳破秘密、公开威胁/拯救某人、煽动全城）；普通闲聊一律为0。node：玩家首句剧本外="scratch1"(若钟未破)；向不知道某秘密的人泄密="scratch2"。secret：愿告知秘密则填所属者id(mayor/pawn/bard)，否则null。');
 
   return lines.join('\n');
 }
@@ -173,18 +212,20 @@ async function talk(body) {
   }
   const content = json.choices?.[0]?.message?.content || '';
   const parsed = parseJson(content);
+  const clampInt = v => (v === undefined || v === null) ? 0 : Math.max(-1, Math.min(1, Math.round(Number(v) || 0)));
   if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
     return {
       reply: parsed.reply.trim(),
       facts: Array.isArray(parsed.facts) ? parsed.facts : [],
       deltas: parsed.deltas || {},
+      repDelta: clampInt(parsed.repDelta),
       node: parsed.node || null,
       secret: parsed.secret || null,
       offline: false,
     };
   }
   // 兜底：把原文当回复
-  return { reply: content.trim() || '…', facts: [], deltas: {}, node: null, secret: null, offline: false };
+  return { reply: content.trim() || '…', facts: [], deltas: {}, repDelta: 0, node: null, secret: null, offline: false };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -228,4 +269,11 @@ server.listen(PORT, () => {
   console.log('│  打开浏览器访问: http://localhost:' + PORT + '    │');
   console.log('│  对话引擎: ' + (cfg.provider ? cfg.provider.toUpperCase() : '离线（无密钥）').padEnd(29) + '│');
   console.log('└────────────────────────────────────────────┘');
+  // 由启动脚本（启动第七天.bat）设置时才自动开浏览器；AI 直接启动不弹窗
+  if (process.env.AUTO_OPEN_BROWSER === '1') {
+    try {
+      if (process.platform === 'win32') execSync('start "" http://localhost:' + PORT, { stdio: 'ignore' });
+      else execSync('xdg-open http://localhost:' + PORT, { stdio: 'ignore' });
+    } catch (e) { /* ignore */ }
+  }
 });
