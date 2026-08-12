@@ -5,6 +5,8 @@ extends CharacterBody2D
 ##   不再用"横向距离<20"的土办法判断能不能说话，
 ##   改成问 NPC："你的感应圈里有人吗？"（player_near）
 ##   NPC 的 Area2D 用 body_entered/body_exited 信号自己算好了。
+##   坑：感应圈放大后可能同时罩住两个 NPC → 感应圈管"行不行"，
+##       距离只管"排顺序"（见 _nearby_npc）。
 
 const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一致
 
@@ -50,13 +52,18 @@ func _update_prompt() -> void:
 	else:
 		_prompt.visible = false
 
-# 第六课：遍历所有 NPC，找"感应圈里有玩家"的那个。
-# 距离到底近不近，是 NPC 的 Area2D 用信号帮你算好的，这里不用再量。
+# 第六课：感应圈负责"行不行"——先筛出感应到玩家的 NPC；
+# 距离只负责"排顺序"——同时有好几个在圈里时，选最近的那个。
 func _nearby_npc() -> Node2D:
+	var best: Node2D = null
+	var best_d := INF
 	for n in get_tree().get_nodes_in_group("npcs"):
 		if n.player_near:
-			return n
-	return null
+			var d: float = (n.position - position).length()
+			if d < best_d:
+				best_d = d
+				best = n
+	return best
 
 func _draw() -> void:
 	# 占位像素小人：蓝衣 + 头 + 腰带 + 脚（和 Canvas 版同一套配色）
