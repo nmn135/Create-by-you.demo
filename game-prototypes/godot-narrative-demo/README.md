@@ -82,6 +82,26 @@ UI (CanvasLayer)                 ← 第三课版
     └── Next (Button)            ← 继续（pressed → 下一句）
 ```
 
+## 第四课 · 输入映射（Input Map）
+
+把"具体键"升级成"命名动作"：代码不认识 `KEY_A`/`KEY_E`，只问 `move_left`/`interact` 被按了吗。
+
+`project.godot` 的 `[input]` 定义键位表：
+
+| 动作 | 绑定的键 |
+|---|---|
+| `move_left` | A、← |
+| `move_right` | D、→ |
+| `interact` | E、空格（学员亲手加的） |
+
+代码写法：
+```gdscript
+Input.is_action_pressed("move_left")    # 按住类输入（每帧查）
+event.is_action_pressed("interact")     # 事件类输入（_unhandled_input）
+```
+
+**改键位的地方**：项目 → 项目设置 → 输入映射。改完不用动代码。⚠️ 改过 `project.godot` 后要**完全退出项目重开**，编辑器才会重新读。
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -96,6 +116,8 @@ UI (CanvasLayer)                 ← 第三课版
 | Instance Child Scene | 实例化子场景 | 场景面板顶部链子图标 |
 | FileSystem | 文件面板（左下） | 从这拖 `.tscn` 进场景 |
 | Scene | 场景面板（左上） | 场景树在这 |
+| Input Map | 输入映射（键位表） | 项目 → 项目设置 → 输入映射 |
+| `is_action_pressed` | "这个动作被按了吗？" | 代码里（`Input.` 或 `event.`） |
 
 ## 对应到 Canvas 版 demo
 
@@ -122,6 +144,6 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 ## 下一步（学完这些再往上加）
 
 - [x] 对话 UI（CanvasLayer + Control，对应 `#dialogue`）——第三课完成 ✅
-- [ ] 输入映射（Input Map，把 A/D/E 也定义成动作，替换物理键直查）
+- [x] 输入映射（Input Map，A/D/E 命名动作）——第四课完成 ✅
 - [ ] 碰撞：NPC 也带碰撞盒，玩家不能穿人
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
