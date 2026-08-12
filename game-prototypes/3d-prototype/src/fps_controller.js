@@ -3,7 +3,7 @@
 // ============================================================
 // 功能：
 //   1. C 键循环切换：俯瞰 → 第一人称 → 第三人称
-//   2. WASD 移动 + Shift 奔跑 + 空格跳 + Ctrl 蹲
+//   2. WASD 移动 + Shift 奔跑 + 空格跳 + Z 蹲
 //   3. 第一/第三人称：鼠标视角（Pointer Lock / 拖拽）
 //   4. 第三人称：相机跟玩家身后，可见玩家化身
 //   5. 殿内碰撞（边界限制）
@@ -39,6 +39,18 @@ export class FPSController {
     this.grounded = true;
     this.crouching = false;
     this.eyeHeight = height;
+
+    // ---- 手感参数 ----
+    this.accel = 14;                 // 地面加速度（起步顺滑）
+    this.decel = 12;                 // 松键减速度（轻微滑行）
+    this.baseFov = camera.fov || 50; // 相机基础 FOV（奔跑扩张基准）
+    this.bobTime = 0;                // 头部晃动相位
+    this.onFootstep = null;          // 脚步回调（由 index.html 接音频）
+    this._stepCd = 0;                // 脚步触发冷却
+    this.onModeChange = null;        // 视角切换回调（如天花板随模式显隐）
+    this.onJumpSound = null;         // 跳音效回调
+    this.onLandSound = null;         // 落地音效回调（带冲击力 0~1）
+    this.bank = 0;                   // 相机侧倾（横扫手感）
 
     this._injectStyle();
     this._buildUI();
@@ -142,7 +154,7 @@ export class FPSController {
   _buildUI() {
     const hint = document.createElement('div');
     hint.id = 'fps-hint';
-    hint.textContent = 'C 切换视角 · WASD 移动 · Shift 奔跑 · 空格跳 · Ctrl 蹲';
+    hint.textContent = 'C 切换视角 · WASD 移动 · Shift 奔跑 · 空格跳 · Z 蹲';
     document.body.appendChild(hint);
     this.hintEl = hint;
 
@@ -212,11 +224,12 @@ export class FPSController {
       if (k === ' ' && this.mode !== 'overview' && this.grounded && !isTyping(e)) {
         this.velY = 5.2;
         this.grounded = false;
+        if (this.onJumpSound) this.onJumpSound();
       }
-      // Z 蹲（Ctrl 被浏览器抢键且卡页面，改 Z）
-      if (k === 'z' || k === 'control') {
+      // Z 蹲（不用 Ctrl：Ctrl+W 会被浏览器抢去关标签页，蹲着走根本测不了；只认 Z）
+      if (k === 'z') {
         this.crouching = true;
-        if (this.mode !== 'overview' && k !== 'control') e.preventDefault();
+        if (this.mode !== 'overview') e.preventDefault();
       }
       // 切换视角
       if (k === this.toggleKey && !isTyping(e)) this.toggle();
@@ -231,7 +244,7 @@ export class FPSController {
     window.addEventListener('keyup', (e) => {
       const k = e.key.toLowerCase();
       this.keys[k] = false;
-      if (k === 'z' || k === 'control') this.crouching = false;
+      if (k === 'z') this.crouching = false;
     });
 
     // 点击进入第一/三人称鼠标控制
@@ -324,6 +337,8 @@ export class FPSController {
       if (mode === 'tps') this.tpsEuler.set(0.35, Math.PI, 0, 'YXZ');
     }
     console.log('[视角] 切换 →', mode);
+    // 视角切换回调（如天花板随模式显隐）
+    if (this.onModeChange) this.onModeChange(mode);
     // 暴露实例供调试/自动化验证
     window.__fpsController = this;
   }
@@ -349,10 +364,15 @@ export class FPSController {
 
     let speed = this.keys[this.runKey] ? this.runSpeed : this.moveSpeed;
     if (this.crouching) speed *= 0.5;
-    if (dir.lengthSq() > 0) {
-      dir.normalize();
-      this.pos.addScaledVector(dir, speed * dt);
-    }
+
+    // 移动平滑：水平速度向目标插值（加速度/减速度），消除瞬移起步与急停
+    const moving = dir.lengthSq() > 0;
+    if (moving) dir.normalize();
+    const accelRate = (moving ? this.accel : this.decel) * dt;
+    this.velocity.x += (dir.x * speed - this.velocity.x) * Math.min(accelRate, 1);
+    this.velocity.z += (dir.z * speed - this.velocity.z) * Math.min(accelRate, 1);
+    this.pos.x += this.velocity.x * dt;
+    this.pos.z += this.velocity.z * dt;
 
     // ---- 跳 / 蹲 / 重力 ----
     const targetEye = this.crouching ? this.height * 0.55 : this.height;
@@ -361,7 +381,11 @@ export class FPSController {
     if (!this.grounded) {
       this.velY -= 14 * dt;  // 重力
       this.pos.y += this.velY * dt;
-      if (this.pos.y <= 0) { this.pos.y = 0; this.velY = 0; this.grounded = true; }
+      if (this.pos.y <= 0) {
+        const impact = Math.min(1, Math.abs(this.velY) / 6);  // 落地冲击力（0~1）
+        this.pos.y = 0; this.velY = 0; this.grounded = true;
+        if (this.onLandSound && impact > 0.12) this.onLandSound(impact);
+      }
     } else {
       this.pos.y = 0;
     }
@@ -381,9 +405,41 @@ export class FPSController {
       this.euler.x += dp * Math.min(15 * dt, 1);
     }
 
+    // ---- 手感：头部晃动 / 奔跑 FOV / 脚步声 ----
+    const movingNow = this.velocity.lengthSq() > 0.02;
+    const runningNow = movingNow && !!this.keys[this.runKey];
+
+    let bobX = 0, bobY = 0;
+    if (movingNow && this.grounded && !this.crouching) {
+      const freq = runningNow ? 10 : 8;
+      const amp = runningNow ? 0.05 : 0.03;
+      this.bobTime += dt * freq;
+      bobY = Math.abs(Math.sin(this.bobTime)) * amp * 0.8;   // 上下起伏
+      bobX = Math.sin(this.bobTime * 0.5) * amp * 0.5;        // 左右摆
+      // 脚步：正弦上升沿触发（每跨一步一声）
+      if (this.onFootstep && this._stepCd <= 0 && Math.sin(this.bobTime) > 0.94) {
+        this.onFootstep(runningNow);
+        this._stepCd = 0.35;
+      }
+    }
+    this._stepCd -= dt;
+
+    // ---- 相机侧倾（横扫手感）：A/D 横扫时轻微 roll，跑动更明显 ----
+    const strafe = (this.keys['d'] ? 1 : 0) - (this.keys['a'] ? 1 : 0);
+    const bankTarget = (movingNow && this.grounded && strafe !== 0) ? strafe * (runningNow ? 0.05 : 0.028) : 0;
+    this.bank += (bankTarget - this.bank) * Math.min(8 * dt, 1);
+    this.euler.z = this.bank;
+
+    // 奔跑 FOV 扩张 / 下蹲 FOV 收缩（平滑）
+    const fovTarget = runningNow ? this.baseFov + 9 : (this.crouching ? this.baseFov - 5 : this.baseFov);
+    if (Math.abs(this.camera.fov - fovTarget) > 0.05) {
+      this.camera.fov += (fovTarget - this.camera.fov) * Math.min(6 * dt, 1);
+      this.camera.updateProjectionMatrix();
+    }
+
     // ---- 应用相机 ----
     if (this.mode === 'fps') {
-      this.camera.position.set(this.pos.x, this.pos.y + this.eyeHeight, this.pos.z);
+      this.camera.position.set(this.pos.x + bobX, this.pos.y + this.eyeHeight + bobY, this.pos.z);
       this.camera.quaternion.setFromEuler(this.euler);
     } else if (this.mode === 'tps') {
       // 第三人称：相机在玩家身后上方

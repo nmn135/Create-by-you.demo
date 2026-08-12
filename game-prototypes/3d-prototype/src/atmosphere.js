@@ -41,25 +41,57 @@ export class Atmosphere {
     this.scene.add(this.floorBounce);
   }
 
+  /** 程序化旗帜纹理（canvas：蓝底条纹 + 金边 + 星徽） */
+  _createFlagTexture() {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 192;
+    const x = c.getContext('2d');
+    // 蓝底
+    x.fillStyle = '#2a4a7a';
+    x.fillRect(0, 0, 128, 192);
+    // 竖向条纹
+    for (let i = 0; i < 128; i += 6) {
+      x.fillStyle = (i / 6) % 2 === 0 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
+      x.fillRect(i, 0, 6, 192);
+    }
+    // 噪点
+    for (let i = 0; i < 180; i++) {
+      x.fillStyle = `rgba(0,0,0,${(Math.random() * 0.06).toFixed(3)})`;
+      x.fillRect(Math.random() * 128, Math.random() * 192, 1, 1);
+    }
+    // 金边
+    x.strokeStyle = '#c8a860';
+    x.lineWidth = 3;
+    x.strokeRect(5, 5, 118, 182);
+    // 中央八芒星（神殿/教会感）
+    const cx = 64, cy = 96;
+    x.fillStyle = 'rgba(200,168,96,0.9)';
+    x.save();
+    x.translate(cx, cy);
+    for (let i = 0; i < 4; i++) {
+      x.rotate(Math.PI / 2);
+      x.beginPath();
+      x.moveTo(0, -26); x.lineTo(7, 0); x.lineTo(0, 26); x.lineTo(-7, 0);
+      x.closePath(); x.fill();
+    }
+    x.restore();
+    return new this.THREE.CanvasTexture(c);
+  }
+
   /** 墙面装饰 */
   _buildWallDecor() {
     const T = this.THREE;
     const d = this.HALL.depth;
     const w = this.HALL.width;
 
-    // 挂毯（南墙中央，玛格丽特区）
-    const tapestryMat = new T.MeshStandardMaterial({
-      color: 0x7a2a2a, roughness: 0.95, metalness: 0,
-      emissive: 0x3a1010, emissiveIntensity: 0.15,
-    });
-    const tapestry = new T.Mesh(new T.PlaneGeometry(3.0, 2.2), tapestryMat);
-    tapestry.position.set(0, 2.8, d / 2 - 0.05);
-    tapestry.rotation.y = Math.PI;  // 面向殿内
-    this.scene.add(tapestry);
+    // 挂毯（中央远墙）—— 用户反馈"中间的板子还在"，已按反馈移除，避免正中遮挡视线
+    // 如需保留墙面装饰，可改挂更贴墙的浮雕/壁画，勿再使用居中大块平板。
+    // const tapestryMat = new T.MeshStandardMaterial({ ... }); (removed 2026-08-12)
 
-    // 旗帜（北墙入口两侧）
+    // 旗帜（北墙入口两侧）—— 程序化旗帜纹理（条纹+金边+星徽）
+    const flagTex = this._createFlagTexture();
     const flagMat = new T.MeshStandardMaterial({
-      color: 0x2a4a7a, roughness: 0.9, side: T.DoubleSide,
+      map: flagTex, color: 0xffffff, roughness: 0.9, side: T.DoubleSide,
       emissive: 0x0a1a3a, emissiveIntensity: 0.1,
     });
     for (const side of [-1, 1]) {

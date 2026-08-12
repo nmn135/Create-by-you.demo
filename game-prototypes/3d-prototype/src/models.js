@@ -38,6 +38,18 @@ export class ModelManager {
     this.models = {};   // npcKey -> { group, mixer, clips, current }
     this._pendingTalk = {}; // 模型未加载时请求的 talk（加载完成后补播）
     this._disposed = false;
+
+    // 加载管理器：拦截 FBX 内嵌的绝对路径纹理引用（如 D:/tools/...），
+    // 用 1x1 透明 GIF 代替，避免每个模型加载时打出一串 403 控制台错误。
+    // （liana 系列 FBX 由旧源模型重导出，残留 Windows 绝对路径纹理引用，
+    //   模型本身已是纯色材质，贴图不需要。）
+    this._manager = new THREE.LoadingManager();
+    this._manager.setURLModifier((url) => {
+      if (/[A-Za-z]:[\\/]/.test(url)) {
+        return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      }
+      return url;
+    });
   }
 
   // ------------------------------------------------------------
@@ -121,7 +133,7 @@ export class ModelManager {
     const ext = useFbx ? 'fbx' : 'glb';
     try {
       if (useFbx) {
-        const loader = new this.FBXLoader();
+        const loader = new this.FBXLoader(this._manager);
         const obj = await this._loadFbx(loader, fbxUrl);
         model = obj;
         rawH = this._normalize(model, npcKey, cfg);
@@ -138,7 +150,7 @@ export class ModelManager {
           }
         }
       } else {
-        const loader = new this.GLTFLoader();
+        const loader = new this.GLTFLoader(this._manager);
         const gltf = await this._loadGltf(loader, glbUrl);
         model = gltf.scene;
         rawH = this._normalize(model, npcKey, cfg);

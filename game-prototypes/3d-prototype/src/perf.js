@@ -31,6 +31,7 @@ export class PerfMonitor {
     this._fpsLow1 = 0;      // 1% low
     this._fpsHistory = [];  // 每秒采样一次，用于基线与自动降级判定
     this._lastFpsSample = 0;
+    this._lastHudAt = 0;    // HUD 上次刷新时间（初始化避免 NaN → HUD 永不刷新）
     this._drawPeak = 0;
     this._triPeak = 0;
     this._baselineLogged = false;
@@ -58,11 +59,12 @@ export class PerfMonitor {
     this._fps = this._fps === 0 ? fps : this._fps * 0.95 + fps * 0.05;
 
     // 1% low：窗口内最慢 1% 帧的平均帧率（300 帧 → 最慢 3 帧）
+    // 帧时间升序数组末尾即最慢帧；此前误取末尾（最快帧），导致 1% low 偏高（反转）
     if (this._frames.length >= WINDOW) {
-      const sorted = [...this._frames].sort((a, b) => b - a); // 帧时间降序
+      const sorted = [...this._frames].sort((a, b) => a - b); // 帧时间升序
       const worst = Math.max(1, Math.floor(WINDOW * 0.01));
       let sum = 0;
-      for (let i = 0; i < worst; i++) sum += sorted[sorted.length - 1 - i];
+      for (let i = sorted.length - worst; i < sorted.length; i++) sum += sorted[i];
       this._fpsLow1 = 1 / (sum / worst);
     }
 

@@ -913,6 +913,17 @@
   <!-- 加载遮罩 -->
   <div id="loading"><div class="pulse"></div></div>
 
+  <!-- 开场剧情（黑屏打字） -->
+  <div id="opening-overlay">
+    <div id="opening-inner">
+      <div id="opening-title">封 印 之 殿</div>
+      <div id="opening-text"></div>
+      <span id="opening-cursor"></span>
+      <div id="opening-continue">点任意处继续</div>
+      <button id="opening-enter" style="display:none">进入大殿</button>
+    </div>
+  </div>
+
   <!-- 3D 画布容器（渲染器挂载点） -->
   <div id="canvas-container"></div>
 
@@ -1064,6 +1075,7 @@ import { AmbientAudio } from './src/audio.js';
     renderer.toneMappingExposure = 1.45;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
+    window.__renderer = renderer; // 调试钩子（像素探针/自动化截图用，只读）
 
     // 性能监控（FPS 统计 / HUD / 基线记录 / 自动降级信号）
     // 自动降级回调 5s 后才触发，届时 settings/applyQuality 均已就绪
@@ -1072,7 +1084,7 @@ import { AmbientAudio } from './src/audio.js';
       onAutoDowngrade: () => {
         if (typeof settings === 'undefined' || !settings || settings.get('quality') === 'low') return;
         const next = settings.get('quality') === 'high' ? 'medium' : 'low';
-        settings.setQuality(next);
+        settings.setQuality(next, false);   // 不持久化：一次性降档，改回由用户决定
         showHints(['检测到运行帧率偏低，已自动切换为「' + (next === 'medium' ? '中' : '低') + '」画质（可在 ⚙ 设置中改回）']);
       },
     });
@@ -1306,20 +1318,28 @@ import { AmbientAudio } from './src/audio.js';
     });
 
     (async () => {
-      // 酒馆风格材质映射
-      const [wallStone, wallBrick, floorWood, beamWood] = await Promise.all([
+      // 酒馆风格材质映射（颜色 + 法线）
+      const [wallStone, wallStoneN, floorWood, floorWoodN, beamWood, beamWoodN, darkWoodTex, darkWoodN] = await Promise.all([
         loadTex('/textures/stone_wall/castle_brick_01_color.jpg'),
-        loadTex('/textures/brick_wall/brick_wall_02_color.jpg'),
+        loadTex('/textures/stone_wall/castle_brick_01_normal.jpg'),
         loadTex('/textures/wood_floor/brown_planks_03_color.jpg'),
+        loadTex('/textures/wood_floor/brown_planks_03_normal.jpg'),
         loadTex('/textures/wood_beam/beam_wall_01_color.jpg'),
+        loadTex('/textures/wood_beam/beam_wall_01_normal.jpg'),
+        loadTex('/textures/wood_dark/dark_wood_color.jpg'),
+        loadTex('/textures/wood_dark/dark_wood_normal.jpg'),
       ]);
 
-      // 1) 四面墙壁统一：城堡石墙（写实石材，酒馆地牢氛围）
+      // 1) 四面墙壁统一：城堡石墙（写实石材，酒馆地牢氛围）+ 法线贴图
       if (wallStone) {
         wallStone.repeat.set(3, 1.5);
         walls.forEach((w) => {
           if (w.material.map) w.material.map.dispose();
           w.material.map = wallStone;
+          if (wallStoneN) {
+            w.material.normalMap = wallStoneN;
+            w.material.normalScale = new THREE.Vector2(0.7, 0.7);
+          }
           w.material.color = new THREE.Color(0x8a7f75);
           w.material.metalness = 0.02;
           w.material.roughness = 0.92;
@@ -1330,6 +1350,10 @@ import { AmbientAudio } from './src/audio.js';
           if (!panel) return;
           if (panel.material.map) panel.material.map.dispose();
           panel.material.map = wallStone.clone();
+          if (wallStoneN) {
+            panel.material.normalMap = wallStoneN;
+            panel.material.normalScale = new THREE.Vector2(0.7, 0.7);
+          }
           panel.material.map.needsUpdate = true;
           panel.material.color = new THREE.Color(0x8a7f75);
           panel.material.needsUpdate = true;
@@ -1338,11 +1362,15 @@ import { AmbientAudio } from './src/audio.js';
       }
 
 
-      // 3) 地板：木地板（酒馆核心氛围）
+      // 3) 地板：木地板（酒馆核心氛围）+ 法线
       if (floorWood) {
         floorWood.repeat.set(6, 4.5);
         if (floorMat.map) floorMat.map.dispose();
         floorMat.map = floorWood;
+        if (floorWoodN) {
+          floorMat.normalMap = floorWoodN;
+          floorMat.normalScale = new THREE.Vector2(0.6, 0.6);
+        }
         floorMat.color = new THREE.Color(0x9a7a50);
         floorMat.roughness = 0.85;
         floorMat.needsUpdate = true;
@@ -1350,11 +1378,14 @@ import { AmbientAudio } from './src/audio.js';
       }
 
       // 3b) 符文面板：手绘符文 → 写实深色木（暗语板）
-      const darkWoodTex = await loadTex('/textures/wood_dark/dark_wood_color.jpg');
       if (darkWoodTex && typeof westRunePanel !== 'undefined') {
         darkWoodTex.repeat.set(1.5, 1);
         if (westRunePanel.material.map) westRunePanel.material.map.dispose();
         westRunePanel.material.map = darkWoodTex;
+        if (darkWoodN) {
+          westRunePanel.material.normalMap = darkWoodN;
+          westRunePanel.material.normalScale = new THREE.Vector2(0.5, 0.5);
+        }
         westRunePanel.material.color = new THREE.Color(0x5a4a38);
         westRunePanel.material.roughness = 0.9;
         westRunePanel.material.emissive = new THREE.Color(0xffd700);
@@ -1363,11 +1394,12 @@ import { AmbientAudio } from './src/audio.js';
         console.log('[纹理] 西墙符文板 → 深色木暗语板');
       }
 
-      // 4) 木梁：墙顶一周横梁（酒馆木构架感）
+      // 4) 木梁：墙顶一周横梁（酒馆木构架感）+ 法线
       if (beamWood) {
         beamWood.repeat.set(4, 1);
         const beamMat = new THREE.MeshStandardMaterial({
           map: beamWood,
+          normalMap: beamWoodN || undefined,
           color: 0x6a4a30,
           roughness: 0.8,
           metalness: 0.05,
@@ -1388,6 +1420,54 @@ import { AmbientAudio } from './src/audio.js';
           scene.add(m);
         });
         console.log('[纹理] 木梁横梁已添加（墙顶一周）');
+      }
+
+      // 5) 天花板：木梁内侧木板封顶（不投阴影，避免挡天窗光束视觉）
+      if (floorWood) {
+        const ceilTex = floorWood.clone();
+        ceilTex.repeat.set(8, 6);
+        const ceilMat = new THREE.MeshStandardMaterial({
+          map: ceilTex,
+          color: 0x6a5a45,
+          roughness: 0.9,
+          metalness: 0.03,
+          side: THREE.DoubleSide,
+        });
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(HALL.width, HALL.depth), ceilMat);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.y = HALL.height - 0.35;
+        ceiling.castShadow = false;
+        ceiling.receiveShadow = false;
+        scene.add(ceiling);
+        // 俯瞰视角从上方看，需隐藏天花板以免挡住内部
+        window.__ceilingMesh = ceiling;
+        ceiling.visible = typeof fpsController !== 'undefined' && fpsController ? fpsController.mode !== 'overview' : false;
+        console.log('[纹理] 天花板木板已添加');
+      }
+
+      // 6) 四角石柱：建筑支撑感 + 空间纵深
+      if (wallStone) {
+        const colGeo = new THREE.BoxGeometry(0.5, HALL.height - 1.0, 0.5);
+        const colTex = wallStone.clone();
+        colTex.repeat.set(1, 4);
+        const colMat = new THREE.MeshStandardMaterial({
+          map: colTex,
+          normalMap: wallStoneN || undefined,
+          color: 0x6a625c,
+          roughness: 0.9,
+          metalness: 0.05,
+        });
+        const halfW = HALL.width / 2 - 0.65;
+        const halfD = HALL.depth / 2 - 0.65;
+        const colH = (HALL.height - 1.0) / 2;
+        [[-halfW, -halfD], [halfW, -halfD], [-halfW, halfD], [halfW, halfD]].forEach(([x, z]) => {
+          const c = new THREE.Mesh(colGeo, colMat);
+          c.position.set(x, colH, z);
+          c.castShadow = true;
+          c.receiveShadow = true;
+          scene.add(c);
+        });
+        console.log('[纹理] 四角石柱已添加');
       }
     })();
 
@@ -1450,6 +1530,134 @@ import { AmbientAudio } from './src/audio.js';
     const lightBulb = new THREE.Mesh(lightBulbGeo, lightBulbMat);
     lightBulb.position.copy(guardianPointLight.position);
     scene.add(lightBulb);
+
+    // ============================================================
+    // 火焰视觉系统（泪滴形焰 + 内芯 + 余烬粒子，火把/壁灯/烛火共用）
+    // ============================================================
+    function makeFlameGeo() {
+      const pts = [];
+      const N = 14;
+      for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        // 底窄→中宽→顶尖的泪滴剖面；Lathe 绕 Y 轴成体
+        const r = Math.pow(Math.sin(t * Math.PI), 0.9) * 0.13 + (1 - t) * 0.02;
+        pts.push(new THREE.Vector2(r, t * 0.55));
+      }
+      return new THREE.LatheGeometry(pts, 10);
+    }
+    const FLAME_GEO = makeFlameGeo();
+    // 程序化径向渐变纹理：软光晕（球面光斑的替代，边缘柔和）
+    function makeRadialTex(size) {
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+      grad.addColorStop(0.7, 'rgba(255,255,255,0.15)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, size, size);
+      return new THREE.CanvasTexture(c);
+    }
+    const SOFT_GLOW_TEX = makeRadialTex(64);   // 光晕
+    const SOFT_DOT_TEX = makeRadialTex(16);    // 余烬圆点
+    // 普通混合：火焰本体在亮墙上也能保持橙色可读（加色混合会饱和成白点）
+    const FLAME_OUTER_MAT = new THREE.MeshBasicMaterial({ color: 0xff6a1f, transparent: true, opacity: 0.92, blending: THREE.NormalBlending, depthWrite: false });
+    const FLAME_INNER_MAT = new THREE.MeshBasicMaterial({ color: 0xffe8b0, transparent: true, opacity: 0.95, blending: THREE.NormalBlending, depthWrite: false });
+    const FLAME_EMBER_MAT = new THREE.PointsMaterial({ map: SOFT_DOT_TEX, color: 0xffc070, size: 0.06, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true });
+
+    // 建一组火焰视觉：外层焰 + 内芯 + 余烬粒子（16 粒），返回引用
+    function createFlameVisual(size) {
+      const group = new THREE.Group();
+      const flame = new THREE.Mesh(FLAME_GEO, FLAME_OUTER_MAT);
+      flame.scale.setScalar(size);
+      flame.renderOrder = 1;
+      group.add(flame);
+      const core = new THREE.Mesh(FLAME_GEO, FLAME_INNER_MAT);
+      core.scale.setScalar(size * 0.5);
+      core.position.y = -0.02;
+      core.renderOrder = 2;
+      group.add(core);
+      const emberCount = 16;
+      const pos = new Float32Array(emberCount * 3);
+      const seeds = new Float32Array(emberCount);
+      for (let i = 0; i < emberCount; i++) seeds[i] = Math.random();
+      const egeo = new THREE.BufferGeometry();
+      egeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const embers = new THREE.Points(egeo, FLAME_EMBER_MAT);
+      embers.renderOrder = 3;
+      group.add(embers);
+      return { group, flame, core, embers, emberSeed: seeds, emberCount, size };
+    }
+
+    // 余烬粒子上升（相位循环：0→1 上升摇曳，到顶回底）
+    function updateEmbers(points, seeds, elapsed, seedOffset) {
+      const pos = points.geometry.attributes.position.array;
+      const n = seeds.length;
+      for (let i = 0; i < n; i++) {
+        const ph = (elapsed * 0.5 + seeds[i] + seedOffset * 0.13) % 1;
+        const s = ph * Math.PI;
+        pos[i * 3] = Math.sin(s * 3 + seeds[i] * 12 + elapsed * 2) * 0.08 * ph;
+        pos[i * 3 + 1] = ph * 0.7;
+        pos[i * 3 + 2] = Math.cos(s * 2 + seeds[i] * 8 + elapsed * 1.7) * 0.05 * ph;
+      }
+      points.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // 统一火焰注册表（动画循环统一驱动）
+    const __flames = [];
+    window.__flames = __flames;
+
+    // 4e. 壁灯暖光（南北墙，无阴影，酒馆烛光感）
+    const sconceLights = [];
+    const sconceFlames = [];
+    const sconceGlows = [];
+    [-5.2, 5.2].forEach((x) => {
+      [-6.4, 6.4].forEach((z) => {
+        const s = new THREE.PointLight(0xffa860, 5.5, 8, 1.8);
+        s.position.set(x, 3.3, z);
+        s.castShadow = false;
+        scene.add(s);
+        sconceLights.push(s);
+        // 木质灯座
+        const mount = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.1, 0.35, 8),
+          new THREE.MeshStandardMaterial({ color: 0x4a3420, roughness: 0.85 })
+        );
+        mount.position.set(x, 3.3 - 0.26, z);
+        scene.add(mount);
+        // 金属灯杯
+        const cup = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.07, 0.12, 10),
+          new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 0.5, metalness: 0.7 })
+        );
+        cup.position.set(x, 3.3 - 0.05, z);
+        scene.add(cup);
+        // 泪滴形火焰（外层焰 + 内芯 + 余烬粒子）
+        const vis = createFlameVisual(0.4);
+        vis.group.position.set(x, 3.28, z);
+        scene.add(vis.group);
+        // 光晕（径向渐变 Sprite，边缘柔和；深度写关避免雾化遮挡）
+        const gl = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: SOFT_GLOW_TEX, color: 0xff9a40, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })
+        );
+        gl.position.set(x, 3.35, z);
+        gl.scale.set(1.7, 1.7, 1);
+        gl.renderOrder = 0; // 光晕在火焰下层，避免加色冲掉橙色焰体
+        scene.add(gl);
+        sconceGlows.push(gl);
+        // 注册统一火焰动画（画质门控：低档熄灭全部壁灯）
+        __flames.push({
+          isSconce: true, ...vis, light: s, lightBase: 5.5, glow: gl, glowBase: 0.5,
+        });
+        sconceFlames.push(vis.flame);
+      });
+    });
+    // 供动画循环引用（火焰闪烁 + 光源强度抖动）
+    window.__sconceLights = sconceLights;
+    window.__sconceFlames = sconceFlames;
+    window.__sconceGlows = sconceGlows;
 
     // ============================================================
     // 5. 大殿结构：地面 + 墙壁 + 区域标记
@@ -1532,16 +1740,18 @@ import { AmbientAudio } from './src/audio.js';
     }
 
     // 精灵区西墙内板（保存引用，用于后续发光控制）
-    const westElfPanel = createWallPanel(6, 5, -(HALL.width / 2) + 0.21, 2.5, -3.75, 0, elfTex);
+    // 注意：PlaneGeometry 默认在 XY 平面（法线 +Z），要贴到东西墙（YZ 平面）必须绕 Y 转 ±90°，
+    // 否则会变成悬浮在殿中央的恒定-Z 竖直面，挡住火把/视线。
+    const westElfPanel = createWallPanel(6, 5, -(HALL.width / 2) + 0.21, 2.5, -3.75, Math.PI / 2, elfTex);
     // 精灵区东墙内板
-    const eastElfPanel = createWallPanel(6, 5, (HALL.width / 2) - 0.21, 2.5, -3.75, Math.PI, elfTex);
+    const eastElfPanel = createWallPanel(6, 5, (HALL.width / 2) - 0.21, 2.5, -3.75, -Math.PI / 2, elfTex);
     // 矮人区西墙内板
-    const dwarfPanel = createWallPanel(5, 4, -(HALL.width / 2) + 0.21, 2, 4.25, 0, dwarfTex);
+    const dwarfPanel = createWallPanel(5, 4, -(HALL.width / 2) + 0.21, 2, 4.25, Math.PI / 2, dwarfTex);
     // 兽人区东墙内板
-    const orcPanel = createWallPanel(5, 4, (HALL.width / 2) - 0.21, 2, 4.25, Math.PI, orcTex);
+    const orcPanel = createWallPanel(5, 4, (HALL.width / 2) - 0.21, 2, 4.25, -Math.PI / 2, orcTex);
 
     // --- 符文面板（西墙上部，独立 emissive 控制）---
-    const westRunePanel = createWallPanel(5, 2.5, -(HALL.width / 2) + 0.22, 6.25, -3.75, 0, reliefTex);
+    const westRunePanel = createWallPanel(5, 2.5, -(HALL.width / 2) + 0.22, 6.25, -3.75, Math.PI / 2, reliefTex);
     westRunePanel.material.emissive = new THREE.Color(0xc8b478);
     westRunePanel.material.emissiveIntensity = 0.7;
     // westRunePanel 引用保留，供按键 Q/E 调节发光强度
@@ -1835,7 +2045,7 @@ import { AmbientAudio } from './src/audio.js';
         modelManager.loadNPC(key, npcPositions[key]).then((model) => {
           if (!model) {
             const es = NPC_ENTRANCE_STAGE[key] || 99;
-            if (npcMeshes[key]) npcMeshes[key].group.visible = currentPhase >= es;
+            if (npcMeshes[key]) npcMeshes[key].group.visible = (window.__forceNpcVisible === true) || currentPhase >= es;
             return;
           }
           replaceNpcWithModel(key, model);
@@ -1872,7 +2082,7 @@ import { AmbientAudio } from './src/audio.js';
 
       // ???????????? >= ???????
       const enterStage = NPC_ENTRANCE_STAGE[npcKey] || 99;
-      entry.group.visible = currentPhase >= enterStage;
+      entry.group.visible = (window.__forceNpcVisible === true) || currentPhase >= enterStage;
 
       // 同步当前信任度表现
       modelManager.setTrust(npcKey, npcTrust[npcKey] !== undefined ? npcTrust[npcKey] : 0.5);
@@ -1986,8 +2196,9 @@ import { AmbientAudio } from './src/audio.js';
       const woodMat = new T.MeshStandardMaterial({ color: 0x6a4a30, roughness: 0.85, metalness: 0.05 });
       const darkWoodMat = new T.MeshStandardMaterial({ color: 0x4a3420, roughness: 0.9, metalness: 0.03 });
       const metalMat = new T.MeshStandardMaterial({ color: 0x6a6258, roughness: 0.5, metalness: 0.7 });
+      // 火把支架专用：中性钢灰（无暖色偏斜），弱自发光保轮廓；火光照到即有金属高光
+      const bracketMat = new T.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.32, metalness: 0.9, emissive: 0x0a0806, emissiveIntensity: 0.35 });
       const fireMat = new T.MeshBasicMaterial({ color: 0xff7a30, transparent: true, opacity: 0.9 });
-      const glowMat = new T.MeshBasicMaterial({ color: 0xffb040, transparent: true, opacity: 0.35, blending: T.AdditiveBlending, depthWrite: false });
 
       const props = [];
 
@@ -2051,28 +2262,52 @@ import { AmbientAudio } from './src/audio.js';
         const handle = new T.Mesh(new T.CylinderGeometry(0.04, 0.05, 0.8, 8), darkWoodMat);
         handle.position.y = 1.4;
         torch.add(handle);
-        const head = new T.Mesh(new T.SphereGeometry(0.12, 8, 8), metalMat);
+        // 金属灯杯（取代球头）
+        const head = new T.Mesh(new T.CylinderGeometry(0.09, 0.06, 0.14, 8), metalMat);
         head.position.y = 1.85;
         torch.add(head);
-        // 火焰光球
-        const flame = new T.Mesh(new T.SphereGeometry(0.3, 8, 8), fireMat);
-        flame.position.y = 2.0;
-        torch.add(flame);
-        // 光晕
-        const glow = new T.Mesh(new T.SphereGeometry(1.0, 12, 10), glowMat);
-        glow.position.y = 2.0;
+        // 壁挂支架：金属横臂 + 墙面玫瑰固定盘（把火把锚定到壁画墙，远处不再像悬浮）
+        const dirX = x > 0 ? 1 : -1;
+        const panelX = dirX * (HALL.width / 2 - 0.21);   // 壁画面板表面 x≈±9.79（比砖墙内壁 x=±10 靠内 0.21）
+        const armLen = Math.abs(panelX - x);              // 臂长 ~1.29，末端正好顶到壁画面
+        // 横臂接到金属灯杯高度（y=1.82，灯杯下缘），不穿木柄，呈标准壁灯/火把支架形态
+        const armY = 1.82;
+        const bracket = new T.Mesh(new T.CylinderGeometry(0.085, 0.085, armLen, 10), bracketMat);
+        bracket.rotation.z = dirX > 0 ? -Math.PI / 2 : Math.PI / 2; // 圆柱默认Y轴，绕Z转±90°使臂沿X轴
+        // 注意：这些是火把组的【本地】坐标（火把组自身位于世界 (x,0,z)），必须减去 (x,z)！
+        bracket.position.set((x + panelX) / 2 - x, armY, 0);
+        torch.add(bracket);
+        // 玫瑰固定盘（短圆柱盘，面朝大殿，紧贴壁画面上）
+        const rosette = new T.Mesh(new T.CylinderGeometry(0.22, 0.22, 0.12, 16), bracketMat);
+        rosette.rotation.z = dirX > 0 ? -Math.PI / 2 : Math.PI / 2; // 圆柱轴沿X → 圆盘面朝大殿
+        rosette.position.set(panelX + dirX * 0.06 - x, armY, 0);
+        torch.add(rosette);
+        // 泪滴形火焰（外层焰 + 内芯 + 余烬粒子）
+        const vis = createFlameVisual(0.55);
+        vis.group.position.y = 1.94;
+        torch.add(vis.group);
+        // 光晕（径向渐变 Sprite，边缘柔和）
+        const glow = new T.Sprite(
+          new T.SpriteMaterial({ map: SOFT_GLOW_TEX, color: 0xffb040, transparent: true, opacity: 0.6, blending: T.AdditiveBlending, depthWrite: false })
+        );
+        glow.position.y = 2.1;
+        glow.scale.set(2.4, 2.4, 1);
+        glow.renderOrder = 0; // 光晕在火焰下层，避免加色冲掉橙色焰体
         torch.add(glow);
         // 点光源
         const light = new T.PointLight(0xff8a3a, 1.2, 8);
-        light.position.y = 2.1;
+        light.position.y = 2.2;
         torch.add(light);
         torch.position.set(x, 0, z);
         scene.add(torch);
         props.push(torch);
-        // 记录火焰引用供动画
-        torch.userData.flame = flame;
+        // 记录引用供动画/调试（兼容旧逻辑）
+        torch.userData.flame = vis.flame;
         torch.userData.glow = glow;
         torch.userData.light = light;
+        __flames.push({
+          isSconce: false, ...vis, light, lightBase: 1.2, glow, glowBase: 0.6,
+        });
       });
 
       // 吊灯（中央上方）
@@ -2086,6 +2321,11 @@ import { AmbientAudio } from './src/audio.js';
         const candle = new T.Mesh(new T.CylinderGeometry(0.04, 0.04, 0.15, 6), fireMat);
         candle.position.set(Math.cos(ang) * 0.5, -0.45, Math.sin(ang) * 0.5);
         chandelier.add(candle);
+        // 烛火（小型泪滴火焰，无独立光源/光晕，省性能）
+        const cvis = createFlameVisual(0.18);
+        cvis.group.position.set(candle.position.x, -0.38, candle.position.z);
+        chandelier.add(cvis.group);
+        __flames.push({ isSconce: false, isCandle: true, ...cvis, light: null, lightBase: 0, glow: null, glowBase: 0 });
       }
       const chain = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 1.2, 6), metalMat);
       chain.position.y = 0.6;
@@ -2153,6 +2393,10 @@ import { AmbientAudio } from './src/audio.js';
       toggleKey: 'c',
       runKey: 'shift',
     });
+    // 视角切换时同步天花板显隐（俯瞰隐藏、第一/三人称显示）
+    fpsController.onModeChange = (mode) => {
+      if (window.__ceilingMesh) window.__ceilingMesh.visible = mode !== 'overview';
+    };
 
     // ============================================================
     // NPC 情绪驱动位置迁移系统
@@ -2386,7 +2630,7 @@ import { AmbientAudio } from './src/audio.js';
     // ============================================================
 
     // --- API 配置 ---
-    const API_BASE = 'http://localhost:8080';
+    const API_BASE = window.location.origin; // 跟随页面来源：本地=localhost:8080，局域网/Tailscale 好友=各自访问的地址
     let serverConnected = false;
     let serverCheckDone = false;
 
@@ -2617,7 +2861,7 @@ import { AmbientAudio } from './src/audio.js';
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(30000),
         });
 
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -3272,7 +3516,7 @@ import { AmbientAudio } from './src/audio.js';
             // ?? NPC ???????????????? NPC ????????
             for (const nk of Object.keys(NPC_ENTRANCE_STAGE)) {
               if (npcMeshes[nk] && npcMeshes[nk].group) {
-                npcMeshes[nk].group.visible = currentPhase >= NPC_ENTRANCE_STAGE[nk];
+                npcMeshes[nk].group.visible = (window.__forceNpcVisible === true) || currentPhase >= NPC_ENTRANCE_STAGE[nk];
               }
             }
           }
@@ -3334,6 +3578,9 @@ import { AmbientAudio } from './src/audio.js';
     /** 找玩家附近最近的 NPC（第一/第三人称交互用） */
     /** 各 NPC 入场所需阶段已上移至模块顶部（避免 TDZ） */
 
+    // 交互判定半径：E 键与提示条共用同一常量，避免"提示出现但 E 没反应"（原 E=2.0 / 提示=2.2 不一致）
+    const INTERACT_RANGE = 2.4;
+
     function findNearbyNpc(range) {
       if (!fpsController || fpsController.mode === 'overview') return null;
       let nearest = null, nearestDist = range;
@@ -3363,7 +3610,7 @@ import { AmbientAudio } from './src/audio.js';
       const hintEl = document.getElementById('interact-hint');
       if (!hintEl) return;
       if (fpsController.mode !== 'overview') {
-        const near = findNearbyNpc(2.2);
+        const near = findNearbyNpc(INTERACT_RANGE);
         if (near) {
           hintEl.textContent = '按 E 与 ' + npcPositions[near].displayName + ' 交谈';
           hintEl.classList.add('visible');
@@ -3499,17 +3746,59 @@ import { AmbientAudio } from './src/audio.js';
       // --- 性能监控采样 ---
       perf.tick(dt);
 
-      // --- 酒馆火把/吊灯火焰动画 ---
-      if (typeof tavernProps !== 'undefined') {
-        tavernProps.forEach((p) => {
-          if (p.userData && p.userData.flame) {
-            const f = 1 + Math.sin(elapsed * 6 + p.position.x) * 0.25;
-            p.userData.flame.scale.setScalar(f);
-            p.userData.glow.material.opacity = 0.25 + Math.sin(elapsed * 5 + p.position.z) * 0.1;
-            p.userData.light.intensity = 1.0 + Math.sin(elapsed * 7 + p.position.x) * 0.35;
+      // --- 统一火焰动画（火把 + 壁灯 + 烛火）：多频闪烁 + 余烬上升 + 画质门控 ---
+      if (typeof __flames !== 'undefined' && __flames.length) {
+        const q = (typeof window.__forceQuality !== 'undefined' && window.__forceQuality)
+          ? window.__forceQuality : ((typeof perf !== 'undefined') ? perf._quality : 'high');
+        const sconceVis = q === 'high' ? 4 : q === 'medium' ? 2 : 0;
+        const torchKeep = q === 'high' ? 4 : q === 'medium' ? 2 : 1;
+        let si = 0, ti = 0;
+        for (let i = 0; i < __flames.length; i++) {
+          const f = __flames[i];
+          if (f.isSconce) {
+            const vis = si < sconceVis;
+            si++;
+            f.flame.visible = f.core.visible = f.embers.visible = vis;
+            if (f.glow) f.glow.visible = vis;
+            if (f.light) f.light.visible = vis;
+            if (!vis) continue;
+          } else if (f.light) {
+            f.light.visible = ti < torchKeep;
+            ti++;
           }
-        });
+          // 多频闪烁（基值 1 + 三档正弦叠加，各火焰相位不同）
+          const fx = 1 + Math.sin(elapsed * 7 + i * 1.7) * 0.22 + Math.sin(elapsed * 13.3 + i * 0.9) * 0.09 + Math.sin(elapsed * 23 + i) * 0.05;
+          f.flame.scale.setScalar(f.size * fx);
+          if (f.core) f.core.scale.setScalar(f.size * 0.5 * (1 + Math.sin(elapsed * 9 + i * 2.3) * 0.18));
+          if (f.glow) f.glow.material.opacity = f.glowBase + Math.sin(elapsed * 5 + i * 2.1) * 0.05;
+          if (f.light) f.light.intensity = f.lightBase * (1 + Math.sin(elapsed * 9 + i * 3.1) * 0.22 + Math.sin(elapsed * 17 + i) * 0.08);
+          if (f.embers) updateEmbers(f.embers, f.emberSeed, elapsed, i);
+        }
       }
+
+      // --- 空间音频：靠近光源火声渐强、角落闷响更沉 ---
+      if (window.__ambientAudio && typeof fpsController !== 'undefined' && fpsController) {
+        const px = fpsController.pos.x, pz = fpsController.pos.z;
+        // 光源点：4 火把 + 4 壁灯 + 吊灯
+        const LIGHTS = [[-8.5,-5],[8.5,-5],[-8.5,5],[8.5,5],[-5.2,-6.4],[5.2,-6.4],[-5.2,6.4],[5.2,6.4],[0,7.5]];
+        let minD = 1e9;
+        for (let i = 0; i < LIGHTS.length; i++) {
+          const d = Math.hypot(px - LIGHTS[i][0], pz - LIGHTS[i][1]);
+          if (d < minD) minD = d;
+        }
+        const fire = Math.max(0, 1 - minD / 8);   // 8m 内线性渐强
+        // 平滑过渡（避免跳变）
+        const curF = window.__ambientAudio._fireVol !== undefined ? window.__ambientAudio._fireVol : 0.012;
+        const tgtF = 0.012 + fire * 0.025;
+        window.__ambientAudio._fireVol = curF + (tgtF - curF) * 0.1;
+        window.__ambientAudio.fireVolume = window.__ambientAudio._fireVol;
+        const curD = window.__ambientAudio._droneVol !== undefined ? window.__ambientAudio._droneVol : 0.018;
+        const tgtD = 0.018 + (1 - fire) * 0.008;
+        window.__ambientAudio._droneVol = curD + (tgtD - curD) * 0.08;
+        window.__ambientAudio.droneVolume = window.__ambientAudio._droneVol;
+      }
+
+      // --- 壁灯火焰闪烁已并入上方统一火焰系统（__flames） ---
 
       // --- 守护灵呼吸式缩放 ---
       const breathe = 1 + Math.sin(elapsed * 1.6) * 0.07;
@@ -3739,6 +4028,22 @@ import { AmbientAudio } from './src/audio.js';
             const step = Math.min(dist, walkSpeed * dt);
             e.group.position.x += (dx / dist) * step;
             e.group.position.z += (dz / dist) * step;
+            // 入场朝移动方向平滑转向（避免侧滑/横走入场）
+            const _tY = Math.atan2(dx, dz);
+            let _diff = _tY - e.group.rotation.y;
+            while (_diff > Math.PI) _diff -= Math.PI * 2;
+            while (_diff < -Math.PI) _diff += Math.PI * 2;
+            e.group.rotation.y += _diff * Math.min(5 * dt, 1);
+            // NPC 脚步声：每 ~0.6m 一声，随与玩家距离衰减
+            npcWanderState[k].stepDist = (npcWanderState[k].stepDist || 0) + step;
+            if (npcWanderState[k].stepDist >= 0.6) {
+              npcWanderState[k].stepDist -= 0.6;
+              if (window.__ambientAudio) {
+                const _fc2 = window.__fpsController;
+                const _d2 = _fc2 && _fc2.pos ? e.group.position.distanceTo(_fc2.pos) : 0;
+                window.__ambientAudio.step(false, 1 - _d2 / 14);
+              }
+            }
           }
           // ????? walk ??????
           if (!npcWanderState[k].walkStarted) {
@@ -3754,6 +4059,14 @@ import { AmbientAudio } from './src/audio.js';
           }
           continue;
         }
+        // 对话中（talk 动画播放）：暂停漫游，避免走动画打断说话
+        const _st = modelManager && modelManager.models[k];
+        if (_st && _st.current === 'talk') {
+          npcWanderState[k].timer = 1; // 持续重置，避免到点触发
+          npcWanderState[k].walking = false;
+          npcWanderState[k].target = null;
+          continue;
+        }
         npcWanderState[k].timer = (npcWanderState[k].timer || 2) - dt;
         if (npcWanderState[k].timer <= 0) {
           npcWanderState[k].timer = 3 + Math.random() * 6;
@@ -3767,11 +4080,28 @@ import { AmbientAudio } from './src/audio.js';
           }
         }
         if (npcWanderState[k].target) {
+          const _bx = e.group.position.x, _bz = e.group.position.z;
           e.group.position.lerp(npcWanderState[k].target, dt * 0.4);
+          // NPC 脚步声：漫游走动画时同步
+          if (npcWanderState[k].walking) {
+            const _mv = Math.hypot(e.group.position.x - _bx, e.group.position.z - _bz);
+            npcWanderState[k].stepDist = (npcWanderState[k].stepDist || 0) + _mv;
+            if (npcWanderState[k].stepDist >= 0.6) {
+              npcWanderState[k].stepDist -= 0.6;
+              if (window.__ambientAudio) {
+                const _fc3 = window.__fpsController;
+                const _d3 = _fc3 && _fc3.pos ? e.group.position.distanceTo(_fc3.pos) : 0;
+                window.__ambientAudio.step(false, 1 - _d3 / 14);
+              }
+            }
+          } else {
+            npcWanderState[k].stepDist = 0;
+          }
           // Return to idle when close to target
           if (npcWanderState[k].walking && e.group.position.distanceTo(npcWanderState[k].target) < 0.35) {
             modelManager && modelManager.playAnimation(k, 'idle');
             npcWanderState[k].walking = false;
+            npcWanderState[k].stepDist = 0;
           }
         }
       }
@@ -3887,12 +4217,16 @@ import { AmbientAudio } from './src/audio.js';
       if (key === 'e') {
         // E 键：与最近 NPC 交互（第一/第三人称下）
         if (fpsController.mode !== 'overview') {
-          const near = findNearbyNpc(2.0);
+          const near = findNearbyNpc(INTERACT_RANGE);
           if (near) {
             chatTarget = near;
             highlightNpcLabel(near);
-            addChatMessage({ type: 'system', text: '你走向了 ' + npcPositions[near].displayName + '。按 Enter 说话，Tab 切换目标，Esc 退出。' });
-            // 不自动聚焦输入框（避免 WASD 被吃）；玩家按 Enter 才进输入模式
+            addChatMessage({ type: 'system', text: '你走向了 ' + npcPositions[near].displayName + '。直接输入想说的话，Enter 发送，Esc 退出。' });
+            // 自动聚焦输入框：按 E 即可直接打字（用户反馈"无法输入"——之前要靠 Enter 才进输入模式，交互断半截）
+            // 清空移动键状态，避免聚焦前正按着的 WASD 被吞进输入框
+            if (fpsController.keys) fpsController.keys = {};
+            e.preventDefault();   // 阻止触发键 'e' 被当成首字符插进输入框
+            chatInput.focus();
           }
           return;
         }
@@ -3927,9 +4261,14 @@ import { AmbientAudio } from './src/audio.js';
         return;
       }
 
-      // --- 帮助弹窗（H 键） ---
+      // --- 帮助弹窗（H 键：开/关切换） ---
       if (key === 'h') {
-        guidance.showHelp();
+        const _helpEl = document.getElementById('g-help');
+        if (_helpEl && _helpEl.classList.contains('hidden')) {
+          guidance.showHelp();
+        } else {
+          guidance.hideHelp();
+        }
         return;
       }
     });
@@ -4116,21 +4455,80 @@ import { AmbientAudio } from './src/audio.js';
   window.__ambientAudio = ambientAudio;
   document.addEventListener('pointerdown', () => ambientAudio.start(), { once: true });
   document.addEventListener('keydown', () => ambientAudio.start(), { once: true });
+  // 脚步音接线：FPS 控制器每跨一步触发（走/跑音量不同）
+  if (typeof fpsController !== 'undefined' && fpsController) {
+    fpsController.onFootstep = (running) => ambientAudio.step(running);
+    fpsController.onJumpSound = () => ambientAudio.jump();
+    fpsController.onLandSound = (impact) => ambientAudio.land(impact);
+  }
 
-  // === ?????? ===
+  // === 开场剧情 ===
     const OPENING_LINES = [
       "千年前，半神法师艾瑟林在大陆中心设下预言：当人类、精灵、矮人、兽人四族同时抵达殿心，封印将解除——释放能满足一切心愿、或毁灭一切贪念的力量。",
       "千年后，四族探险者找到了这座殿。殿门在他们踏入的瞬间封死，一个声音在所有人脑海中响起：「心中所念，即为钥匙。证明你们的灵魂值得。」",
       "你是第五个进入殿中的人——不属于任何与这座殿有宿怨的种族。千年来第一个无关之人。守护灵的目光，落在了你身上。",
       "冒险者将陆续到访。点「⏭ 等待…」请他们入场，点名字标签与他们对话。你的每一句话，都在改变他们的关系，与这座殿的结局。",
     ];
-    // opening bypassed - direct FPS entry
-    setTimeout(() => {
+    // 开场流程：打字逐行 → 点任意处/Enter 推进 → 末行显示「进入大殿」
+    const openingOverlay = document.getElementById('opening-overlay');
+    const openingText = document.getElementById('opening-text');
+    const openingCursor = document.getElementById('opening-cursor');
+    const openingContinue = document.getElementById('opening-continue');
+    const openingEnter = document.getElementById('opening-enter');
+    let openingIdx = 0;
+    let openingState = 0; // 0=打字中 1=本行完成待推进 2=全部完成
+    let openingTimer = null;
+
+    function typeOpeningLine(line) {
+      let i = 0;
+      openingText.textContent = '';
+      openingContinue.style.opacity = '0';
+      openingState = 0;
+      openingTimer = setInterval(() => {
+        i++;
+        openingText.textContent = line.slice(0, i);
+        if (i >= line.length) {
+          clearInterval(openingTimer);
+          openingState = 1;
+          openingContinue.style.opacity = '1';
+        }
+      }, 22);
+    }
+    function openingNext() {
+      if (openingIdx >= OPENING_LINES.length) {
+        openingState = 2;
+        openingContinue.style.opacity = '0';
+        openingCursor.style.display = 'none';
+        openingEnter.style.display = 'inline-block';
+        return;
+      }
+      typeOpeningLine(OPENING_LINES[openingIdx]);
+      openingIdx++;
+    }
+    function openingAdvance() {
+      if (openingState === 0) {
+        // 打字中点击 → 立即完成本行
+        clearInterval(openingTimer);
+        openingText.textContent = OPENING_LINES[openingIdx - 1];
+        openingState = 1;
+        openingContinue.style.opacity = '1';
+      } else if (openingState === 1) {
+        openingNext();
+      }
+    }
+    openingOverlay.addEventListener('click', openingAdvance);
+    document.addEventListener('keydown', (e) => {
+      if (openingState === 2) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openingAdvance(); }
+    });
+    openingEnter.addEventListener('click', () => {
+      openingOverlay.classList.add('done');
       const fc = window.__fpsController;
       if (fc && fc.mode === 'overview') fc.setMode('fps');
       document.getElementById('loading').classList.add('hidden');
-    }, 400);
-
+      setTimeout(() => { openingOverlay.style.display = 'none'; }, 1300);
+    });
+    openingNext();
     document.getElementById('loading').classList.add('hidden');
     }, 600);
 
@@ -4157,12 +4555,14 @@ import { AmbientAudio } from './src/audio.js';
         if (s.quality) applyQuality(s.quality);
         // 性能监控 HUD 开关
         perf.setVisible(s.showPerf !== false);
+        // 背景音乐音量
+        if (window.__ambientAudio && s.musicVol !== undefined) window.__ambientAudio.musicVolume = s.musicVol;
       },
     });
     // 初始应用
-    settings.onApply({ showHints: settings.get('showHints'), sensitivity: settings.get('sensitivity'), toggleKey: settings.get('toggleKey'), runKey: settings.get('runKey'), quality: settings.get('quality'), showPerf: settings.get('showPerf') });
+    settings.onApply({ showHints: settings.get('showHints'), sensitivity: settings.get('sensitivity'), toggleKey: settings.get('toggleKey'), runKey: settings.get('runKey'), quality: settings.get('quality'), showPerf: settings.get('showPerf'), musicVol: settings.get('musicVol') });
 
-    // 引导系统：同步当前阶段目标（开场卡片已 bypass，直接进入 FPS）
+    // 引导系统：同步当前阶段目标（开场结束进入 FPS 后展示对应阶段目标）
     guidance.setStage(currentPhase);
 
     // UI 面板可拖动（位置持久化；右下角「调整布局 / 固定 / 重置」）

@@ -15,7 +15,16 @@ export class Props {
 
   async _load() {
     if (!this.FBXLoader) return;
-    const loader = new this.FBXLoader();
+    // 与 models.js 同款防御：拦截 FBX 内嵌的 Windows 绝对路径纹理引用 → 1x1 透明 GIF，
+    // 避免道具模型像 liana 那样打出隐藏 403（render_odin 处理管线可能残留 D:/ 路径）。
+    const manager = new this.THREE.LoadingManager();
+    manager.setURLModifier((url) => {
+      if (/[A-Za-z]:[\\/]/.test(url)) {
+        return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      }
+      return url;
+    });
+    const loader = new this.FBXLoader(manager);
 
     // 布局：模型文件 → [位置, 旋转, 缩放]
     const layout = [
