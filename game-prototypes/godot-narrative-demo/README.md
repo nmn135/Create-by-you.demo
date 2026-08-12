@@ -55,6 +55,21 @@ Mayor (NPC)                     ← npc.tscn 的实例
 
 玩家的新花样：`@onready var _prompt: Label = get_node("../UI/Prompt")` —— **等树就绪**再取引用，`../` 表示父节点；`_unhandled_input()` 接住 E 键事件（`InputEventKey`，`physical_keycode == KEY_E`）。靠近 NPC 时底部弹出提示，按 E 会得到一句"对话面板下节课做"的占位回应。
 
+## 常用单词速查（忘了就回来翻）
+
+| 英文 | 意思 | 在哪 |
+|---|---|---|
+| `Inspector` | 属性面板（右边） | 选中节点后用它改参数 |
+| `npc_name` | NPC 显示名 | Inspector |
+| `body_color` | 衣服颜色 | Inspector（点色块换色） |
+| `stations` | 巡逻站点列表 | Inspector（点箭头展开，`Size`=数量） |
+| `speed` | 移动速度（像素/秒） | Inspector |
+| `dwell` | 到站停留秒数 | Inspector |
+| Rename | 重命名节点 | 右键节点 → Rename |
+| Instance Child Scene | 实例化子场景 | 场景面板顶部链子图标 |
+| FileSystem | 文件面板（左下） | 从这拖 `.tscn` 进场景 |
+| Scene | 场景面板（左上） | 场景树在这 |
+
 ## 对应到 Canvas 版 demo
 
 | 这里 | Canvas 版 (`2d-narrative-demo/index.html`) |
