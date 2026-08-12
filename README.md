@@ -4,7 +4,8 @@
 
 ## 快速开始
 
-- 启动 2D 叙事 demo《第七天》：
+- **双击根目录 `启动第七天.bat`**（推荐）——自动检查 Node、启动服务器、打开浏览器
+- 或手动启动：
   ```bash
   cd game-prototypes/2d-narrative-demo
   node server.js        # 服务器端口 8890
