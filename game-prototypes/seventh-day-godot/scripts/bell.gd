@@ -5,6 +5,7 @@ extends Node2D
 ##   1. Timer：到点自动触发 timeout 信号（这里定时响铃）
 ##   2. Tween：让属性平滑"动起来"（这里让钟左右摆动）
 ##   3. await：挂起等一会儿（这里让提示文字自己消失）
+## 第十二课：每响一声，写进 GameState 世界状态（bell_rings 计数），提示文字跟着报数
 
 @onready var _timer: Timer = $Timer
 @onready var _note: Label = get_node("../UI/BellNote")   # 屏幕中央的提示文字
@@ -17,6 +18,16 @@ func _ready() -> void:
 	_timer.start()
 
 func _ring() -> void:
+	# 第十二课：先把"这次响声"记进世界状态（NPC 对话能读到、HUD 能显示）
+	GameState.bell_rings += 1
+	# 提示文字跟着报数：第一声是问号，第十三声先打个招呼（真正的戏在第十五课）
+	var n := GameState.bell_rings
+	if n == 1:
+		_note.text = "铛——钟楼自己响了？"
+	elif n == 13:
+		_note.text = "铛——第十三下了。"
+	else:
+		_note.text = "铛——第 %d 声了。" % n
 	# Tween：一连串动作，让钟绕着"挂点"摆两下
 	# 格式：tween_property(对象, "属性", 目标值, 耗时秒数)
 	var tween := create_tween()
