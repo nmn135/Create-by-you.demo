@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scripts/player_avatar.gd" id="9_avatar"]
 [ext_resource type="PackedScene" path="res://scenes/intro.tscn" id="10_intro"]
 [ext_resource type="Script" path="res://scripts/camera.gd" id="11_cam"]
+[ext_resource type="Script" path="res://scripts/day_visual.gd" id="12_day"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(12, 16)
@@ -21,6 +22,7 @@ size = Vector2(12, 16)
 offset_right = 320.0
 offset_bottom = 180.0
 color = Color(0.07, 0.08, 0.12, 1)
+script = ExtResource("12_day")
 
 [node name="City" type="Sprite2D" parent="." unique_id=1172674786]
 position = Vector2(160, 90)
