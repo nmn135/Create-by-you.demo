@@ -54,6 +54,7 @@ func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) ->
 	_update_portrait(npc_name) # 第十七课：换上这位 NPC 的立绘
 	_show_current()
 	visible = true
+	_camera_zoom(true)         # 还原P3：开对话镜头推近
 
 func advance() -> void:
 	# 玩家按 E 时也叫这个（和点按钮同一招）
@@ -188,12 +189,19 @@ func _set_height(h: float) -> void:
 	offset_bottom = half
 
 func close() -> void:
+	_camera_zoom(false)         # 还原P3：关对话镜头拉回
 	_set_height(PANEL_H)
 	_hide_choices()
 	if _portrait:
 		_portrait.visible = false
 	visible = false
 	closed.emit()
+
+# 还原P3：让镜头推近/拉回（相机在 "camera" 组里，没找到就跳过）
+func _camera_zoom(push: bool) -> void:
+	var cam := get_tree().get_first_node_in_group("camera")
+	if cam:
+		cam.call("push_in" if push else "pull_out")
 
 # ---- 第十七课：立绘 + 结局 ----
 

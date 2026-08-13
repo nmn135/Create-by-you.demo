@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://scripts/marks_label.gd" id="8_marks"]
 [ext_resource type="Script" path="res://scripts/player_avatar.gd" id="9_avatar"]
 [ext_resource type="PackedScene" path="res://scenes/intro.tscn" id="10_intro"]
+[ext_resource type="Script" path="res://scripts/camera.gd" id="11_cam"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(12, 16)
@@ -127,3 +128,6 @@ speed = 30.0
 dwell = 2.0
 
 [node name="Intro" parent="." unique_id=20260817 instance=ExtResource("10_intro")]
+
+[node name="Camera" type="Camera2D" parent="." unique_id=20260818]
+script = ExtResource("11_cam")
