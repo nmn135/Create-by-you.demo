@@ -375,6 +375,27 @@ var relations := {
 | NPC 的 `Area2D` 感应圈 | 距离判断（`Math.abs(npc.x - player.x) < 40`） |
 | `options`（Array[Dictionary]） | 话题快捷栏（节点分支对话 v1） |
 
+## 还原LLM：自由对话 + 无限结局（F1~F5）
+
+把 web 版的"全 LLM 驱动"搬进 Godot：跟 NPC 的自由输入由 LLM 现写回复，世界记忆会跨 NPC 传播，结局由玩家最后一句话决定。
+
+**架构（新增文件）：**
+- `scripts/talk_client.gd`（autoload `TalkClient`）——HTTP 客户端，调 `server.js` 的 `/api/talk` 和 `/api/endgame`
+- `scripts/llm_mapper.gd`（`class_name LLMMapper`）——GameState 世界状态 → server 认识的请求体（中英 id 映射、记忆、世界状态）
+- `scripts/offline_reply.gd`（`class_name OfflineReply`）——连不上 LLM 时的罐头回复（按语气）
+- `scripts/endgame.gd`（`class_name Endgame`）——无限结局：4 条世界线分类 + 本地兜底 epilogue
+
+**玩法流程：**
+- 对话面板有输入框（回车发送）+ 话题快捷栏。话题 = 预设一句话，和自由输入走同一条 LLM 管线
+- 刻痕1 后谈作者/真假 → 切 meta 频道，游戏本体打破第四面墙（说话人变"？？？"）
+- 新事实：说话人 + 48px 内旁听者都记住；NPC 同处一室够久就互传闲话（F3）
+- 结局：「我听懂了这座城」（刻痕3）→ 四层剧场（作者坦白）→ 写最后一句话 → 4 世界线（续写/合卷/抹去/坦白之后）→ LLM 现写 epilogue
+- 隐藏结局"坦白之后"：作者坦白后，最后一句话选择"相信"才解锁
+
+**跑起来需要：** 后端 `2d-narrative-demo/server.js` 起着（node server.js，端口 8890）。连不上就自动用本地兜底，游戏永远能玩。
+
+**存储：** 记忆字段（dialogue_history/facts/npc_heard/secrets）随存档持久化（`save_manager.gd`）。
+
 ## AI 协作环境（godot-mcp，已配好）
 
 Claude Code / Claudian 通过 MCP 直接操作 Godot：
@@ -395,4 +416,6 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 第九课：钟楼响铃（Timer + Tween）——完成 ✅
 - [x] 第十课：正式背景（`bg.png` 导入，替换色块）——完成 ✅（`bg_day2.png` 等第十六课）
 - [x] 第十一课：关系系统（4维关系 + HUD + 选项门槛）——完成 ✅
+- [x] 还原P1~P7：像素精灵 / 开场 / 相机推近 / 话题快捷栏 / 第二天 / 背景音乐 / 名声解锁 ——完成 ✅
+- [x] 还原LLM F1~F5：自由对话 + 记忆传播 + 无限结局 + meta 频道 ——完成 ✅
 - [ ] 整套移植 web 版（世界状态 / 隔墙有耳 / 流言 / 刻痕 / 结局 / 存档）——见任务清单 #24~#31
