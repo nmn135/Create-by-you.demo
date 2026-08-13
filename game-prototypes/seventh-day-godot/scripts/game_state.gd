@@ -21,6 +21,13 @@ var ending := ""      # 结局："留白" / "破局" / "接笔"（空 = 还没�
 var saved := false    # 第十八课：有没有存档落盘（HUD 用来显示"已存档"）
 var reputation := 0   # 还原P7：名声 0~10，帮城里的忙会涨，够高才能解锁某些话
 
+# ---- 还原LLM：自由对话/记忆（F1 占位数据结构，F3 填实）----
+var dialogue_history: Array = []          # 最近对话：[{role: "user"|"npc", text}]（发给 LLM 用）
+var facts: Array = []                     # 全城记忆：[{text, known_by: [npc名]}]
+var npc_heard: Dictionary = {}            # npc名 → [听过的话]
+var secrets_known: Array = []             # 玩家已知秘密 id
+var npc_secrets_known: Dictionary = {}    # npc名 → [秘密 id]
+
 # 屏幕小提示：Notice 标签在 _ready 时注册上来；还没注册时 notify 是空操作
 var notice: Label = null
 

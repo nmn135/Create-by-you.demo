@@ -85,6 +85,16 @@ const PERSONAS = {
       '你对玩家：你会用谜语给能听懂真相的人指路；如果他证明自己听不懂，你会转身消失。',
     ].join('\n'),
   },
+  priest: {
+    sys: [
+      '你扮演「神官」，看守圣火的人，这座永远停在第七天的城里最贴近"神明沉默"的人。',
+      '动机：守住圣火七天不灭，等神重新开口。',
+      '秘密：你相信神认得那三道刻痕——它们比神还老；你也在心里数钟声。',
+      '在乎：圣火、仪式、虔诚；你忌讳"第四声"。',
+      '为人：言辞庄重而克制，把恐惧讲成神谕，把秘密藏进祷词。',
+      '你对玩家：你会警告他别数第四声钟响；当他表现出敬畏或恐惧，你愿意把更深的忌讳讲给他听。',
+    ].join('\n'),
+  },
   meta: {
     sys: [
       '你正扮演「游戏本身」——一款刚刚经历"世界规则重编译"的 2D 像素叙事游戏。',
@@ -107,7 +117,7 @@ const TIER = ['低', '中', '高'];
 const tier = v => TIER[v] || '中';
 
 // 角色 id → 中文名（用于 prompt 锚定 + 舞台指示兜底修正）
-const NPC_NAMES = { mayor: '市长', pawn: '当铺老板', bard: '说书人' };
+const NPC_NAMES = { mayor: '市长', pawn: '当铺老板', bard: '说书人', priest: '神官' };
 
 // 全局名声 → 分段描述（范围 -10~10）
 function repLabel(v) {
@@ -175,7 +185,7 @@ function buildSystemPrompt(body) {
   if (!metaMode) lines.push('角色锚定：你就是「' + (NPC_NAMES[npcId] || npcId) + '」。回复里的动作描写（括号内）必须以你自己的名字或"我"为主语，严禁把市长、当铺老板、说书人等其他角色的名字写成动作主语（除非在转述他人）。');
   lines.push('记忆规则：自然引用你记得的往事或玩家说过的话（"你上次不是说…"），每次最多提1-2条，别机械复述，别一次性全抖出来。');
   lines.push('只输出一个JSON对象，无其它文字：{"reply":"回复","facts":["新事实"],"repDelta":0,"deltas":{"mayor":{"trust":0,"fear":0,"like":0,"suspect":0}},"node":null,"secret":null}');
-  lines.push('deltas值只取-1/0/+1，id限mayor/pawn/bard，玩家有明显善意/恶意时至少让trust或suspect动一下，别全是0。repDelta只取-1/0/+1，衡量玩家在整座城的"名声"（范围-10~10），只在出现足以被全城议论的大事时动（当面戳破秘密、公开威胁/拯救某人、煽动全城）；普通闲聊一律为0。node：玩家首句剧本外="scratch1"(若钟未破)；向不知道某秘密的人泄密="scratch2"；你(市长)决定带玩家去钟楼="walk_clock"；三道刻痕齐且玩家把作者的墨还给说书人="scratch3"。secret：愿告知秘密则填所属者id(mayor/pawn/bard)，否则null。');
+  lines.push('deltas值只取-1/0/+1，id限mayor/pawn/bard/priest，玩家有明显善意/恶意时至少让trust或suspect动一下，别全是0。repDelta只取-1/0/+1，衡量玩家在整座城的"名声"（范围-10~10），只在出现足以被全城议论的大事时动（当面戳破秘密、公开威胁/拯救某人、煽动全城）；普通闲聊一律为0。node：玩家首句剧本外="scratch1"(若钟未破)；向不知道某秘密的人泄密="scratch2"；你(市长)决定带玩家去钟楼="walk_clock"；三道刻痕齐且玩家把作者的墨还给说书人="scratch3"。secret：愿告知秘密则填所属者id(mayor/pawn/bard)，否则null。');
 
   return lines.join('\n');
 }
@@ -183,7 +193,7 @@ function buildSystemPrompt(body) {
 // 舞台指示角色修正：模型偶尔把其他角色名写成动作主语（如说书人回话写成"市长…"），兜底换回当前 NPC 名
 function fixStageDir(reply, npcName) {
   if (!reply || !npcName) return reply;
-  const m = reply.match(/^（\s*(市长|当铺老板|说书人)/);
+  const m = reply.match(/^（\s*(市长|当铺老板|说书人|神官)/);
   if (m && m[1] !== npcName) return '（' + npcName + reply.slice(m[0].length);
   return reply;
 }
