@@ -106,6 +106,9 @@ func apply_llm_node(node: String) -> void:
 		check_progress()
 	elif node == "walk_clock":
 		notify("市长示意你跟上——往钟楼去。")
+	elif node == "author_confessed":
+		set_flag("author_confessed")
+		notify("你听见了作者的坦白——这座城，是假的。")   # 还原LLM F4：解锁隐藏世界线"坦白之后"
 
 # 新事实入记忆：说话人 + 旁听者都会"听过"它（还原LLM F3：隔墙有耳，听进 memory）
 func remember_facts(facts_arr: Array, speaker_cn: String) -> void:

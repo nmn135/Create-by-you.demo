@@ -41,7 +41,8 @@ var _options: Array[Dictionary] = []
 var _index := 0
 var _npc_name := ""           # 第十一课：现在跟谁说话（改关系要用）
 var _showing_reply := false   # 第七课：正在显示某个选项的回复
-var _ending: Dictionary = {}  # 第十七课：结局三选一（从 dialogues.json 的 "_ending" 读）
+var _ending: Dictionary = {}  # 第十七课：结局标题（从 dialogues.json 的 "_ending" 读）
+var _ending_mode := false     # 还原LLM F4：正在等玩家写下最后一句话
 
 func _ready() -> void:
 	# ★ 信号连接：按钮被按下 → 调 _on_next_pressed()
@@ -121,9 +122,9 @@ func _build_topics() -> void:
 		_choices.add_child(btn)
 
 func _on_topic_pressed(opt: Dictionary) -> void:
-	# 第十七课：这是"听懂这座城"的入口 → 不显示普通回复，直接进结局三选一
+	# 第十七课：这是"听懂这座城"的入口 → 不显示普通回复，直接进结局（还原LLM F4：自由写下最后一笔）
 	if opt.get("ending", false):
-		_show_ending_choices()
+		_begin_ending()
 		return
 	# 还原P4：点"告辞"就结束对话，回到探索
 	if str(opt.get("label", "")) == "告辞":
@@ -132,12 +133,15 @@ func _on_topic_pressed(opt: Dictionary) -> void:
 	# 还原LLM F2：话题 = 预设一句话，发给 LLM（在线走自由对话；离线兜底脚本回复）
 	_send_text(str(opt.get("label", "……")), opt)
 
-# 还原LLM F2：玩家在输入框回车 → 自由对话
+# 还原LLM F2：玩家在输入框回车 → 自由对话（还原LLM F4：结局模式 → 写下最后一笔）
 func _on_input_submitted(text: String) -> void:
 	var t := text.strip_edges()
 	if t.is_empty():
 		return
 	_input.clear()
+	if _ending_mode:
+		_submit_ending(t)
+		return
 	_send_text(t, {})
 
 # 还原LLM F2：把一句话发给 LLM，等回复并应用世界效果（关系/名声/记忆/剧情节点）
@@ -314,30 +318,38 @@ func _load_ending() -> void:
 	if data is Dictionary and data.has("_ending"):
 		_ending = data["_ending"]
 
-# 结局入口：把三个结局变成按钮
-func _show_ending_choices() -> void:
+# 结局入口（还原LLM F4）：不再给三选一，而是让玩家写下对这座城说的最后一句话
+func _begin_ending() -> void:
+	_ending_mode = true
 	_set_height(PANEL_H_CHOICES)
 	_next_button.visible = false
 	_hide_choices()
-	_text_label.text = str(_ending.get("title", "三道刻痕同时亮起……"))
-	for opt in _ending.get("options", []):
-		var btn := Button.new()
-		btn.text = str(opt.get("label", "……"))
-		btn.pressed.connect(_on_ending_chosen.bind(opt))
-		_choices.add_child(btn)
-	if _choices.get_child_count() == 0:
-		close()
-		return
-	_choices.visible = true
+	_text_label.text = str(_ending.get("title", "三道刻痕同时亮起……")) + "\n（写下你对这座城说的最后一句话，回车落笔）"
+	if _input:
+		_input.clear()
+		_input.editable = true
+		_input.grab_focus()
 
-# 玩家挑了一个结局 → 记进 GameState，显示结局文案，"继续"就退出游戏
-func _on_ending_chosen(opt: Dictionary) -> void:
-	GameState.ending = str(opt.get("label", "留白"))
-	_apply_effect(opt.get("effect", {}))
-	SaveManager.save_game()   # 第十八课：结局定下了，落盘
+# 玩家的最后一句话 → 世界线分类 → LLM 现写 epilogue（离线用本地兜底）
+func _submit_ending(final_line: String) -> void:
+	_ending_mode = false
+	GameState.log_dialogue("user", final_line)
+	var ending := Endgame.classify_ending(final_line, GameState.has_flag("author_confessed"))
+	GameState.ending = ending
+	_text_label.text = "（城在倾听你的最后一笔…）"
+	_set_busy(true)
+	var body := LLMMapper.build_endgame_body(final_line, ending)
+	var res: Dictionary = await TalkClient.endgame(body)
+	_set_busy(false)
+	var epilogue := Endgame.default_epilogue(ending)
+	if not res.get("offline", false) and str(res.get("epilogue", "")).strip_edges() != "":
+		epilogue = str(res["epilogue"]).strip_edges()
+	if _input:
+		_input.editable = false   # 故事写完，不再接收输入
 	_set_height(PANEL_H)
 	_hide_choices()
-	_text_label.text = str(opt.get("reply", "……"))
+	_text_label.text = epilogue + "\n\n—— 世界线 · " + ending + " ——"
 	_next_button.text = "—— 故事完 —— [E]"
 	_next_button.visible = true
 	_showing_reply = true
+	SaveManager.save_game()   # 第十八课：结局定下了，落盘
