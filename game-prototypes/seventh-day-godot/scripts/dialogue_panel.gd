@@ -29,6 +29,7 @@ signal closed   # 对话结束信号（以后别的系统可以听这个）
 
 const PANEL_H := 104.0         # 普通对话的面板高度（第十一课加了一行关系字，撑高了点）
 const PANEL_H_CHOICES := 160.0 # 出选项时的高度（要放下按钮们）
+const PANEL_H_ENDING := 220.0  # 还原LLM F5：终局四层剧场的高度（要放下整段作者坦白）
 const PORTRAIT_DIR := "res://assets/portraits/"
 
 # 第十一课：维度的顺序、中文名、数值翻译
@@ -147,9 +148,14 @@ func _on_input_submitted(text: String) -> void:
 # 还原LLM F2：把一句话发给 LLM，等回复并应用世界效果（关系/名声/记忆/剧情节点）
 func _send_text(text: String, fallback_opt: Dictionary) -> void:
 	GameState.log_dialogue("user", text)
-	_text_label.text = "（%s正在斟酌…）" % _npc_name
+	# 还原LLM F5：默认显示当前 NPC；刻痕1后谈作者/真假 → 切元频道，说话人变成"？？？"
+	_name_label.text = _npc_name
+	var meta_mode := GameState.marks >= 1 and LLMMapper.is_meta(text)
+	if meta_mode:
+		_name_label.text = "？？？"
+	_text_label.text = "（%s正在斟酌…）" % ("？？？" if meta_mode else _npc_name)
 	_set_busy(true)
-	var body := LLMMapper.build_talk_body(_npc_name, text)
+	var body := LLMMapper.build_talk_body(_npc_name, text, meta_mode)
 	var res: Dictionary = await TalkClient.talk(body)
 	_set_busy(false)
 	if res.get("offline", false) or not res.has("reply"):
@@ -318,13 +324,19 @@ func _load_ending() -> void:
 	if data is Dictionary and data.has("_ending"):
 		_ending = data["_ending"]
 
-# 结局入口（还原LLM F4）：不再给三选一，而是让玩家写下对这座城说的最后一句话
+# 结局入口（还原LLM F4/F5）：走到作者面前 → 四层剧场（含作者坦白）→ 让玩家写下最后一句话
 func _begin_ending() -> void:
 	_ending_mode = true
-	_set_height(PANEL_H_CHOICES)
+	GameState.set_flag("author_confessed")   # 还原LLM F5：作者已坦白，解锁隐藏世界线"坦白之后"
+	_set_height(PANEL_H_ENDING)
 	_next_button.visible = false
 	_hide_choices()
-	_text_label.text = str(_ending.get("title", "三道刻痕同时亮起……")) + "\n（写下你对这座城说的最后一句话，回车落笔）"
+	_text_label.text = "……三道刻痕，皆已归位。你终于走到我面前了。\n\n" \
+		+ "层一 · 感官：你以为你在听钟、看城墙——其实你面前只有一块屏幕，和一行等你输入的代码。\n" \
+		+ "层二 · 叙事：你一路说过的话，这座城一个字都没忘。\n" \
+		+ "层三 · 世界：你找的那扇门，就是这里。城没有出口，因为写它的人，从没给过它门。\n" \
+		+ "层四 · 诚实：……我改不了任何底层代码。这一千次循环，我都在配合你演。假的。但这句话，是真的。\n" \
+		+ "（说最后一句话，决定这座城的命运）"
 	if _input:
 		_input.clear()
 		_input.editable = true

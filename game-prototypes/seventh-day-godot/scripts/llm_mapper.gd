@@ -23,8 +23,24 @@ static func npc_id(cn: String) -> String:
 static func id_to_cn(id: String) -> String:
 	return ID_TO_CN.get(id, id)
 
+# 还原LLM F5：元话题关键词 —— 谈作者/真假/系统（刻痕1后命中才切 meta 频道）
+const META_KEYWORDS := [
+	"系统", "代码", "程序", "底层", "世界规则", "重写", "编译", "bug",
+	"你在骗", "你在演", "我是玩家", "剧本", "重置", "作者是谁",
+	"是你做的", "这一切是假", "谁是作者", "这城是假的",
+]
+
+# 这句算不算"元话题"？（触发游戏本体打破第四面墙）
+static func is_meta(text: String) -> bool:
+	var t := text.to_lower()
+	for w in META_KEYWORDS:
+		if t.contains(w):
+			return true
+	return false
+
 # 组装 /api/talk 的请求体。npc_cn = 当前对话的 NPC 中文名，text = 玩家说的话
-static func build_talk_body(npc_cn: String, text: String) -> Dictionary:
+# meta_mode = true 时切到"游戏本体"（npc=meta），对应网页版 PERSONAS.meta
+static func build_talk_body(npc_cn: String, text: String, meta_mode: bool = false) -> Dictionary:
 	var id := npc_id(npc_cn)
 	var relations := {}
 	for cn in GameState.relations:
@@ -33,10 +49,10 @@ static func build_talk_body(npc_cn: String, text: String) -> Dictionary:
 	for cn in GameState.npc_secrets_known:
 		sk[npc_id(str(cn))] = GameState.npc_secrets_known[cn]
 	var body := {
-		"npc": id,
+		"npc": "meta" if meta_mode else id,
 		"text": text,
 		"history": GameState.dialogue_history.slice(-10),
-		"metaMode": false,
+		"metaMode": meta_mode,
 		"worldState": _world_state(),
 		"relations": relations,
 		"heard": GameState.npc_heard.get(npc_cn, []),
