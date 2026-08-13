@@ -20,13 +20,15 @@ signal closed   # 对话结束信号（以后别的系统可以听这个）
 @onready var _name_label: Label = $HBox/VBox/NameLabel
 @onready var _rel_label: Label = $HBox/VBox/RelLabel     # 第十一课：四维关系一行字
 @onready var _text_label: Label = $HBox/VBox/TextLabel
-@onready var _choices: VBoxContainer = $HBox/VBox/Choices
+@onready var _choices: Container = $HBox/VBox/Choices   # 还原LLM F2：改 FlowContainer 放横向话题按钮
 @onready var _next_button: Button = $HBox/VBox/Next
 # 第十七课：立绘。场景里还没加 HBox/Portrait 节点时会是 null，代码里都做了空判断
 @onready var _portrait: TextureRect = get_node_or_null("HBox/Portrait")
+# 还原LLM F2：自由对话输入框（场景里没有就不显示，不影响老版本）
+@onready var _input: LineEdit = get_node_or_null("HBox/VBox/Input")
 
 const PANEL_H := 104.0         # 普通对话的面板高度（第十一课加了一行关系字，撑高了点）
-const PANEL_H_CHOICES := 152.0 # 出选项时的高度（要放下按钮们）
+const PANEL_H_CHOICES := 160.0 # 出选项时的高度（要放下按钮们）
 const PORTRAIT_DIR := "res://assets/portraits/"
 
 # 第十一课：维度的顺序、中文名、数值翻译
@@ -44,6 +46,8 @@ var _ending: Dictionary = {}  # 第十七课：结局三选一（从 dialogues.j
 func _ready() -> void:
 	# ★ 信号连接：按钮被按下 → 调 _on_next_pressed()
 	_next_button.pressed.connect(_on_next_pressed)
+	if _input:
+		_input.text_submitted.connect(_on_input_submitted)   # 还原LLM F2：回车发送自由对话
 	_load_ending()             # 第十七课：结局数据
 
 func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) -> void:
@@ -58,6 +62,9 @@ func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) ->
 	_show_current()
 	visible = true
 	_camera_zoom(true)         # 还原P3：开对话镜头推近
+	if _input:
+		_input.clear()         # 还原LLM F2：每次开对话清空输入框
+		_input.editable = true
 
 func advance() -> void:
 	# 玩家按 E 时也叫这个（和点按钮同一招）
@@ -122,16 +129,80 @@ func _on_topic_pressed(opt: Dictionary) -> void:
 	if str(opt.get("label", "")) == "告辞":
 		close()
 		return
-	_apply_effect(opt.get("effect", {}))   # 第十一课：选完先改关系/世界状态
-	_refresh_rel()                          # 关系变了，刷新那行字
+	# 还原LLM F2：话题 = 预设一句话，发给 LLM（在线走自由对话；离线兜底脚本回复）
+	_send_text(str(opt.get("label", "……")), opt)
+
+# 还原LLM F2：玩家在输入框回车 → 自由对话
+func _on_input_submitted(text: String) -> void:
+	var t := text.strip_edges()
+	if t.is_empty():
+		return
+	_input.clear()
+	_send_text(t, {})
+
+# 还原LLM F2：把一句话发给 LLM，等回复并应用世界效果（关系/名声/记忆/剧情节点）
+func _send_text(text: String, fallback_opt: Dictionary) -> void:
+	GameState.log_dialogue("user", text)
+	_text_label.text = "（%s正在斟酌…）" % _npc_name
+	_set_busy(true)
+	var body := LLMMapper.build_talk_body(_npc_name, text)
+	var res: Dictionary = await TalkClient.talk(body)
+	_set_busy(false)
+	if res.get("offline", false) or not res.has("reply"):
+		_offline_reply(text, fallback_opt)
+		return
+	var reply := str(res.get("reply", "……"))
+	GameState.apply_llm_result(res, _npc_name)
+	GameState.log_dialogue("npc", reply)
+	_refresh_rel()
 	_set_height(PANEL_H_CHOICES)
-	_hide_choices()                        # 清掉上一个话题的按钮
-	_build_topics()                        # 重建话题栏：刚才的话可能解锁了新话题
-	_choices.visible = true                # 还原P4：话题栏常驻，不随回复收起
-	_text_label.text = str(opt.get("reply", "……"))
+	_hide_choices()
+	_build_topics()
+	_choices.visible = true
+	_text_label.text = reply
 	_next_button.text = "告辞 [E]"
 	_next_button.visible = true
 	_showing_reply = true
+
+# 还原LLM F2：连不上 LLM 时——话题走脚本化回复+效果；自由输入走罐头回复
+func _offline_reply(text: String, fallback_opt: Dictionary) -> void:
+	if not fallback_opt.is_empty():
+		_apply_scripted_topic(fallback_opt)
+		return
+	var reply := OfflineReply.fallback_reply(_npc_name, text)
+	GameState.log_dialogue("npc", reply)
+	_set_height(PANEL_H_CHOICES)
+	_hide_choices()
+	_build_topics()
+	_choices.visible = true
+	_text_label.text = reply
+	_next_button.text = "告辞 [E]"
+	_next_button.visible = true
+	_showing_reply = true
+
+# 脚本化话题（P4 原行为）：应用 JSON 效果 + 显示脚本回复
+func _apply_scripted_topic(opt: Dictionary) -> void:
+	_apply_effect(opt.get("effect", {}))
+	_refresh_rel()
+	_set_height(PANEL_H_CHOICES)
+	_hide_choices()
+	_build_topics()
+	_choices.visible = true
+	var reply := str(opt.get("reply", "……"))
+	_text_label.text = reply
+	_next_button.text = "告辞 [E]"
+	_next_button.visible = true
+	_showing_reply = true
+	GameState.log_dialogue("npc", reply)
+
+# 等 LLM 时禁用输入/按钮，防止连点
+func _set_busy(b: bool) -> void:
+	if _input:
+		_input.editable = not b
+	for child in _choices.get_children():
+		if child is Button:
+			child.disabled = b
+	_next_button.disabled = b
 
 # ---- 第十一课：关系系统 ----
 

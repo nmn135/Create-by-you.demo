@@ -10,9 +10,18 @@ const CN_TO_ID := {
 	"说书人": "bard",
 	"神官": "priest",
 }
+const ID_TO_CN := {
+	"mayor": "市长",
+	"pawn": "当铺老板",
+	"bard": "说书人",
+	"priest": "神官",
+}
 
 static func npc_id(cn: String) -> String:
 	return CN_TO_ID.get(cn, "mayor")
+
+static func id_to_cn(id: String) -> String:
+	return ID_TO_CN.get(id, id)
 
 # 组装 /api/talk 的请求体。npc_cn = 当前对话的 NPC 中文名，text = 玩家说的话
 static func build_talk_body(npc_cn: String, text: String) -> Dictionary:

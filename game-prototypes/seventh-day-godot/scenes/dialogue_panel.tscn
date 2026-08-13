@@ -9,9 +9,9 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -140.0
+offset_left = -150.0
 offset_top = -45.0
-offset_right = 140.0
+offset_right = 150.0
 offset_bottom = 45.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -48,9 +48,13 @@ theme_override_font_sizes/font_size = 12
 text = "……"
 autowrap_mode = 2
 
-[node name="Choices" type="VBoxContainer" parent="HBox/VBox"]
+[node name="Choices" type="FlowContainer" parent="HBox/VBox"]
 layout_mode = 2
 visible = false
+
+[node name="Input" type="LineEdit" parent="HBox/VBox"]
+layout_mode = 2
+placeholder_text = "想说点什么…（回车发送）"
 
 [node name="Next" type="Button" parent="HBox/VBox"]
 layout_mode = 2

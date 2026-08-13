@@ -51,6 +51,75 @@ func notify(msg: String) -> void:
 	if notice and is_instance_valid(notice):
 		notice.show_msg(msg)
 
+# 记一句对话进历史（发给 LLM 用），只留最近 20 句
+func log_dialogue(role: String, text: String) -> void:
+	dialogue_history.append({ "role": role, "text": text })
+	if dialogue_history.size() > 20:
+		dialogue_history = dialogue_history.slice(-20)
+
+# ---- 还原LLM：应用 server.js 返回的自由对话结果 ----
+# res = {reply, facts[], repDelta, deltas{id:{dim:±1}}, node, secret}
+# speaker_cn = 当前对话的 NPC 中文名（新事实讲给谁听）
+func apply_llm_result(res: Dictionary, speaker_cn: String) -> void:
+	var deltas: Dictionary = res.get("deltas", {})
+	for id in deltas:
+		var cn := LLMMapper.id_to_cn(str(id))
+		if not relations.has(cn):
+			continue
+		var d: Dictionary = deltas[id]
+		for dim in d:
+			if relations[cn].has(dim):
+				relations[cn][dim] = clampi(int(relations[cn][dim]) + int(d[dim]), 0, 2)
+	var rep_delta := int(res.get("repDelta", 0))
+	if rep_delta != 0:
+		reputation = clampi(reputation + rep_delta, 0, 10)
+	var fa: Array = res.get("facts", [])
+	if not fa.is_empty():
+		remember_facts(fa, speaker_cn)
+	var sec := str(res.get("secret", ""))
+	if not sec.is_empty():
+		learn_secret(sec)
+	var node := str(res.get("node", ""))
+	if not node.is_empty():
+		apply_llm_node(node)
+
+# LLM 给的"节点" → 剧情推进（接在现有脚本化触点上）
+func apply_llm_node(node: String) -> void:
+	if node == "scratch1" and marks == 0:
+		bell_rings = maxi(bell_rings, 13)
+		add_mark()
+		notify("第一道刻痕，浮现在城墙上了。")
+		_auto_save()
+	elif node == "scratch2":
+		set_flag("gossip_spread")
+		check_progress()
+	elif node == "scratch3":
+		set_flag("听懂最后一笔")
+		check_progress()
+	elif node == "walk_clock":
+		notify("市长示意你跟上——往钟楼去。")
+
+# 新事实入记忆：说话人 + 旁听者都会"听过"它
+func remember_facts(facts_arr: Array, speaker_cn: String) -> void:
+	var listeners: Array = [speaker_cn]
+	for ft in facts_arr:
+		var s := str(ft).strip_edges()
+		if s.is_empty():
+			continue
+		facts.append({ "text": s, "known_by": listeners.duplicate() })
+		for who in listeners:
+			var heard: Array = npc_heard.get(who, [])
+			if not heard.has(s):
+				heard.append(s)
+				npc_heard[who] = heard
+	if facts.size() > 30:
+		facts = facts.slice(-30)
+
+# 玩家得知一个秘密（server 用 id：mayor/pawn/bard）
+func learn_secret(secret_id: String) -> void:
+	if not secrets_known.has(secret_id):
+		secrets_known.append(secret_id)
+
 # 剧情进度检查：每次选项效果结算后调用（dialogue_panel._apply_effect 里接）
 #   刻痕1 已现 + 传过一次闲话 → 刻痕2 上墙，天亮切到第二天
 #   刻痕2 已现 + 听懂说书人那句"最后一笔" → 刻痕3 浮现
