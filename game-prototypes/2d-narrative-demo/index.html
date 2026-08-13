@@ -1082,7 +1082,8 @@ function appendLog(who, text) {
   div.textContent = (who === '你' ? '你：' : who + '：') + text;
   dlgLog.appendChild(div);
   dlgLog.scrollTop = dlgLog.scrollHeight;
-  historyLog.push({ role: who === '你' ? 'user' : 'npc', text });
+  // npc 标记说话人（'mayor'|'pawn'|'bard'|'meta'）：防止 A 的台词流进 B 的 LLM 上下文（"市长说神官的台词"）
+  historyLog.push({ role: who === '你' ? 'user' : 'npc', text, npc: dialogNpc });
 }
 
 async function typeReply(text, target) {

@@ -30,7 +30,9 @@ var _co_loc := {}            # "A|B" → 累计共处秒数
 var _gossip_notified := false # 第一次传开时弹提示
 
 # ---- 还原LLM：自由对话/记忆（F1 占位数据结构，F3 填实）----
-var dialogue_history: Array = []          # 最近对话：[{role: "user"|"npc", text}]（发给 LLM 用）
+# dialogue_history：全局桶，但每条带 npc 标记（中文名），取历史时按人过滤，
+# 防止"市长说神官的台词"——A 的对话流进 B 的 LLM 上下文
+var dialogue_history: Array = []          # 最近对话：[{role: "user"|"npc", text, npc}]（发给 LLM 用）
 var facts: Array = []                     # 全城记忆：[{text, known_by: [npc名]}]
 var npc_heard: Dictionary = {}            # npc名 → [听过的话]
 var secrets_known: Array = []             # 玩家已知秘密 id
@@ -59,9 +61,10 @@ func notify(msg: String) -> void:
 	if notice and is_instance_valid(notice):
 		notice.show_msg(msg)
 
-# 记一句对话进历史（发给 LLM 用），只留最近 20 句
-func log_dialogue(role: String, text: String) -> void:
-	dialogue_history.append({ "role": role, "text": text })
+# 记一句对话进历史（发给 LLM 用），只留最近 20 句。
+# npc = 当前对话的 NPC 中文名：历史按人分桶，取历史时按 npc 过滤，防止串台。
+func log_dialogue(role: String, text: String, npc: String = "") -> void:
+	dialogue_history.append({ "role": role, "text": text, "npc": npc })
 	if dialogue_history.size() > 20:
 		dialogue_history = dialogue_history.slice(-20)
 

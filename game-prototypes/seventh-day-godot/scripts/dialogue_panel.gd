@@ -164,7 +164,7 @@ func _on_input_submitted(text: String) -> void:
 
 # 还原LLM F2：把一句话发给 LLM，等回复并应用世界效果（关系/名声/记忆/剧情节点）
 func _send_text(text: String, fallback_opt: Dictionary) -> void:
-	GameState.log_dialogue("user", text)
+	GameState.log_dialogue("user", text, _npc_name)
 	# 还原LLM F5：默认显示当前 NPC；刻痕1后谈作者/真假 → 切元频道，说话人变成"？？？"
 	_name_label.text = _npc_name
 	var meta_mode := GameState.marks >= 1 and LLMMapper.is_meta(text)
@@ -180,7 +180,7 @@ func _send_text(text: String, fallback_opt: Dictionary) -> void:
 		return
 	var reply := str(res.get("reply", "……"))
 	GameState.apply_llm_result(res, _npc_name)
-	GameState.log_dialogue("npc", reply)
+	GameState.log_dialogue("npc", reply, _npc_name)
 	_refresh_rel()
 	_set_height(PANEL_H_CHOICES)
 	_hide_choices()
@@ -197,7 +197,7 @@ func _offline_reply(text: String, fallback_opt: Dictionary) -> void:
 		_apply_scripted_topic(fallback_opt)
 		return
 	var reply := OfflineReply.fallback_reply(_npc_name, text)
-	GameState.log_dialogue("npc", reply)
+	GameState.log_dialogue("npc", reply, _npc_name)
 	_set_height(PANEL_H_CHOICES)
 	_hide_choices()
 	_build_topics()
@@ -220,7 +220,7 @@ func _apply_scripted_topic(opt: Dictionary) -> void:
 	_next_button.text = "告辞 [E]"
 	_next_button.visible = true
 	_showing_reply = true
-	GameState.log_dialogue("npc", reply)
+	GameState.log_dialogue("npc", reply, _npc_name)
 
 # 等 LLM 时禁用输入/按钮，防止连点
 func _set_busy(b: bool) -> void:

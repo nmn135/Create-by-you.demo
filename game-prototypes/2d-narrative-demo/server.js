@@ -215,7 +215,12 @@ async function talk(body) {
   const P = PROVIDERS[provider];
 
   const sys = buildSystemPrompt(body);
-  const history = (body.history || []).map(h => ({ role: h.role === 'npc' ? 'assistant' : 'user', content: h.text }));
+  // 历史跨 NPC 防串台（"市长说神官的台词"）：客户端在每条历史上标了说话人英文 id。
+  // 普通 NPC 对话：只留当前说话人（未标的老客户端放行）；meta 频道（作者）保留全部——作者知道全城的事。
+  const npcKey = body.metaMode ? null : body.npc;
+  const history = (body.history || [])
+    .filter(h => !npcKey || !h.npc || h.npc === npcKey)
+    .map(h => ({ role: h.role === 'npc' ? 'assistant' : 'user', content: h.text }));
 
   const resp = await fetch(P.endpoint, {
     method: 'POST',

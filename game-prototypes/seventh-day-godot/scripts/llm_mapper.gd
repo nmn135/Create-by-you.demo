@@ -48,10 +48,23 @@ static func build_talk_body(npc_cn: String, text: String, meta_mode: bool = fals
 	var sk := {}
 	for cn in GameState.npc_secrets_known:
 		sk[npc_id(str(cn))] = GameState.npc_secrets_known[cn]
+	# 历史按人分桶：普通对话只拿"当前 NPC 的对话"当 LLM 上下文，
+	# 修复"市长说神官的台词"——全局桶里神官的回复（assistant 身份）不能流进市长的 prompt。
+	# meta 频道（作者）保留全部历史——作者记得你说过的每句话（"你一路说过的话，这座城一个字都没忘"）。
+	# 每条补 npc 英文 id（meta 频道补 "meta"），server.js 再做一道同人过滤防线。
+	var hist: Array = []
+	for h in GameState.dialogue_history:
+		if not meta_mode and str(h.get("npc", "")) != npc_cn:
+			continue
+		hist.append({
+			"role": str(h.get("role", "user")),
+			"text": str(h.get("text", "")),
+			"npc": "meta" if meta_mode else id,
+		})
 	var body := {
 		"npc": "meta" if meta_mode else id,
 		"text": text,
-		"history": GameState.dialogue_history.slice(-10),
+		"history": hist.slice(-10),
 		"metaMode": meta_mode,
 		"worldState": _world_state(),
 		"relations": relations,
