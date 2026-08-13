@@ -33,6 +33,12 @@ func _ready() -> void:
 	drone.volume_db = -20.0
 	add_child(drone)
 	drone.play()
+	# 还原P6：程序化背景音乐（8 秒循环旋律），音量更低，当氛围垫底
+	var music := AudioStreamPlayer.new()
+	music.stream = _gen_music()
+	music.volume_db = -16.0
+	add_child(music)
+	music.play()
 
 func play_bell() -> void:
 	_bell_player.play()
@@ -91,6 +97,46 @@ func _gen_drone() -> AudioStreamWAV:
 		var lfo := 0.6 + 0.4 * sin(TAU * 0.125 * t)
 		var s := 0.16 * sin(TAU * 55.0 * t) + 0.10 * sin(TAU * 82.5 * t)
 		_write_sample(buf, i, s * lfo)
+	var stream := _make_stream(buf, n)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = n
+	return stream
+
+# ---- 还原P6：背景音乐 ----
+# 8 秒循环的慢旋律：A 小调五声音阶，几句淡淡的动机（像是夜里钟楼边的风声）。
+# 每个音符一个正弦 + 指数衰减；8 秒末最后一个音刚好衰减完，循环接缝干净。
+func _gen_music() -> AudioStreamWAV:
+	var dur := 8.0
+	var n := int(SR * dur)
+	var buf := PackedByteArray()
+	buf.resize(n * 2)
+	var notes := [
+		[0.0, 220.0, 1.6, 0.20],     # A3
+		[0.8, 261.63, 1.6, 0.18],    # C4
+		[1.6, 329.63, 2.0, 0.16],    # E4
+		[2.6, 293.66, 1.6, 0.15],    # D4
+		[3.4, 261.63, 1.6, 0.16],    # C4
+		[4.2, 220.0, 2.4, 0.18],     # A3
+		[5.4, 196.0, 1.6, 0.14],     # G3
+		[6.2, 220.0, 1.8, 0.16],     # A3
+	]
+	for i in n:
+		var t := float(i) / SR
+		var s := 0.0
+		for note in notes:
+			var t0: float = note[0]
+			var freq: float = note[1]
+			var len_s: float = note[2]
+			var amp: float = note[3]
+			if t < t0:
+				continue
+			var tn := t - t0
+			if tn > len_s + 0.8:
+				continue
+			var env := exp(-3.0 * tn) * (1.0 - exp(-60.0 * tn))
+			s += amp * env * sin(TAU * freq * tn)
+		_write_sample(buf, i, s * 0.5)
 	var stream := _make_stream(buf, n)
 	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	stream.loop_begin = 0
