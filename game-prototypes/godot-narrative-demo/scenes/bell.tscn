@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/bell.gd" id="1_bell"]
+
+[node name="Bell" type="Node2D"]
+position = Vector2(160, 14)
+
+[node name="Body" type="ColorRect" parent="."]
+offset_left = -6.0
+offset_right = 6.0
+offset_bottom = 6.0
+color = Color(0.79, 0.66, 0.42, 1)
+
+[node name="Timer" type="Timer" parent="."]
+wait_time = 1.0
+one_shot = true

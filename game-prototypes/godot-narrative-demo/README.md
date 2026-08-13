@@ -229,6 +229,42 @@ if data.has(npc_name):
 
 **课后动手**：用记事本打开 `dialogues.json`，给说书人加第四个选项（照着格式抄一行），F5 看看出现没有——全程不用碰 Inspector。
 
+## 第九课 · 钟楼响铃：Timer + Tween，让世界活过来
+
+之前的钟是一块静止色块。这课把它变成会自己摆动的活物——每隔几秒"铛"一声，屏幕闪一句提示。
+
+**钟变成了一棵小场景**（`scenes/bell.tscn`）：
+```
+Bell (Node2D)            ← 挂在钟楼顶，脚本 bell.gd
+├── Body (ColorRect)     ← 那口钟的样子
+└── Timer                ← 到点自动响
+```
+
+**1. `Timer`（定时器）**——到点自动触发：
+```gdscript
+_timer.timeout.connect(_ring)
+_timer.wait_time = randf_range(6.0, 10.0)   # 随机等 6~10 秒
+_timer.start()
+```
+
+**2. `Tween`（补间动画）**——让属性平滑过渡：
+```gdscript
+var tween := create_tween()
+tween.tween_property(self, "rotation", -0.35, 0.15)   # 属性, 目标值, 耗时(秒)
+tween.tween_property(self, "rotation",  0.35, 0.3)
+tween.tween_property(self, "rotation",  0.0,  0.15)
+```
+一句话就能让任何属性（位置/旋转/颜色/大小）动起来，还能连成一串。
+
+**3. `await`（等一下）**——提示文字 2.5 秒后自己消失：
+```gdscript
+await get_tree().create_timer(2.5).timeout
+```
+
+**课后动手**：
+- 选中 `Bell` → 展开 `Timer` → 把 `wait_time` 改成 `2.0`，F5 看钟是不是疯狂响（改完记得改回来）
+- 改 `bell.gd` 里 Tween 的数字（比如 `0.15` 改成 `0.05`），感受摆动速度变化
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -260,6 +296,10 @@ if data.has(npc_name):
 | `get_as_text()` | 把整个文件读成字符串 | `FileAccess` 的方法 |
 | `JSON.parse_string(文本)` | JSON 文本 → 字典/数组 | 和 `get_as_text()` 配合 |
 | `dialogues.json` | 台词数据文件（记事本可改） | 顶层按 npc_name 查 |
+| `Timer` | 定时器（到点自动触发） | `timeout` 信号 |
+| `Tween` | 让属性平滑动起来的动画器 | `create_tween()` |
+| `tween_property(对象, 属性, 目标, 耗时)` | 加一段动画 | `rotation`/`position`/`modulate` 都行 |
+| `await get_tree().create_timer(秒).timeout` | 挂起等几秒 | 等完继续往下跑 |
 
 ## 对应到 Canvas 版 demo
 
@@ -293,4 +333,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 感应区：Area2D 替代"距离土办法"触发交谈 —— 第六课完成 ✅
 - [x] 对话分支：选项 + 动态按钮 —— 第七课完成 ✅
 - [x] 第八课：台词搬进 JSON 文件（`dialogues.json`，启动时读）——完成 ✅
+- [x] 第九课：钟楼响铃（Timer + Tween）——完成 ✅
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
