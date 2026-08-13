@@ -194,6 +194,41 @@ options = [
 
 **课后动手**：在 Inspector 里选一个 NPC → 展开 `options` → 改 `label` / `reply` 的文字，或 Add Element 加新选项。
 
+## 第八课 · 台词搬进 JSON：数据就该待在文件里
+
+第七课结束时你被 Inspector 手敲字典折磨了一顿——这节课彻底根治：**台词从场景文件里搬出去，放到一个 `dialogues.json`**，NPC 启动时自己读。玩法一行没改，纯"数据搬家"——这就是**重构**。
+
+**`dialogues.json` 长这样**（用记事本就能改）：
+```json
+{
+	"说书人": {
+		"lines": ["第七天夜里，城会说话。", "三道刻痕，作者之墨。", "你信命吗？"],
+		"options": [
+			{ "label": "讲讲刻痕", "reply": "头一道刻痕落下的那夜，钟楼第一次没响。" },
+			{ "label": "告辞", "reply": "我讲的故事里，命都改写过。" }
+		]
+	}
+}
+```
+顶层用 `npc_name` 当钥匙，NPC 启动时按自己的名字去查。JSON 天生就是"字典套数组"，和台词结构一模一样。
+
+**读取代码**（npc.gd 的 `_load_dialogue`）：
+```gdscript
+var file := FileAccess.open("res://dialogues.json", FileAccess.READ)
+var data: Variant = JSON.parse_string(file.get_as_text())
+if data.has(npc_name):
+	var entry: Dictionary = data[npc_name]
+	lines = _to_string_array(entry.get("lines", []))
+	options = _to_dict_array(entry.get("options", []))
+```
+
+**三个新招：**
+1. **`FileAccess`** —— 读文件的入口：`open(路径, READ)` 打开，`get_as_text()` 把整个文件读成字符串。
+2. **`JSON.parse_string()`** —— 把 JSON 文本解析成 Godot 的字典/数组。
+3. **`Variant` 转定型数组** —— JSON 读出来的是"万能类型"，要转回 `Array[String]` / `Array[Dictionary]`（见 `_to_string_array` / `_to_dict_array`）。
+
+**课后动手**：用记事本打开 `dialogues.json`，给说书人加第四个选项（照着格式抄一行），F5 看看出现没有——全程不用碰 Inspector。
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -221,6 +256,10 @@ options = [
 | `Dictionary` | 字典（{键: 值} 小盒子） | `{ "label": "问刻痕", "reply": "……" }` |
 | `Button.new()` | 代码里造一个新按钮 | 循环里动态生成 UI |
 | `opt.get("key", 默认值)` | 取字典里的值，没有就返回默认 | `opt.get("label", "……")` |
+| `FileAccess.open(路径, READ)` | 打开文件准备读取 | 路径用 `res://` 开头 |
+| `get_as_text()` | 把整个文件读成字符串 | `FileAccess` 的方法 |
+| `JSON.parse_string(文本)` | JSON 文本 → 字典/数组 | 和 `get_as_text()` 配合 |
+| `dialogues.json` | 台词数据文件（记事本可改） | 顶层按 npc_name 查 |
 
 ## 对应到 Canvas 版 demo
 
@@ -253,5 +292,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 碰撞：NPC 也带碰撞盒，玩家不能穿人 —— 第五课完成 ✅
 - [x] 感应区：Area2D 替代"距离土办法"触发交谈 —— 第六课完成 ✅
 - [x] 对话分支：选项 + 动态按钮 —— 第七课完成 ✅
-- [ ] 第八课（待办）：台词搬进 JSON 文件（`dialogues.json`，NPC 启动时读）——**告别 Inspector 手敲字典**
+- [x] 第八课：台词搬进 JSON 文件（`dialogues.json`，启动时读）——完成 ✅
 - [ ] 换正式场景（用 `bg.png`，或先程序化画）
