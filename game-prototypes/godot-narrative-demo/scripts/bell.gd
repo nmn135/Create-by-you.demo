@@ -20,7 +20,7 @@ func _ring() -> void:
 	# Tween：一连串动作，让钟绕着"挂点"摆两下
 	# 格式：tween_property(对象, "属性", 目标值, 耗时秒数)
 	var tween := create_tween()
-	tween.tween_property(self, "rotation", -0.35, 0.15)   # 摆向左边
+	tween.tween_property(self, "rotation", -0.35, 0.05)   # 摆向左边
 	tween.tween_property(self, "rotation", 0.35, 0.3)     # 摆向右边
 	tween.tween_property(self, "rotation", -0.3, 0.25)    # 再回一点
 	tween.tween_property(self, "rotation", 0.0, 0.15)     # 回正
