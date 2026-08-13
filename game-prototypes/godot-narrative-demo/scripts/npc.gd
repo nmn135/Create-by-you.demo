@@ -7,12 +7,13 @@ extends CharacterBody2D
 
 const DIALOGUES_PATH := "res://dialogues.json"   # 第八课：所有台词都在这
 
+const GROUND_Y := 132.0
 @export var npc_name := "说书人"                     # 显示名（也是 JSON 里的钥匙）
 @export var body_color := Color("#5A4A7A")           # 衣服颜色
 @export var stations: Array[Vector2] = [             # 站点列表（巡逻路线）
-	Vector2(90, 150),
-	Vector2(150, 150),
-	Vector2(230, 150),
+	Vector2(90, GROUND_Y),
+	Vector2(150, GROUND_Y),
+	Vector2(230, GROUND_Y),
 ]
 @export var speed := 32.0   # 像素/秒
 @export var dwell := 2.5    # 到站后停留秒数
@@ -83,6 +84,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var target: Vector2 = stations[_target_index]
+	target.y = GROUND_Y   # 站点只管左右，站多高由常量说了算
 	var to_target := target - position
 
 	# 到站了 → 换下一个站点，开始停留

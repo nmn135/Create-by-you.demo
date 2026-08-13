@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://bi8bh3fx5w48c" path="res://scenes/npc.tscn" id="2_npc"]
 [ext_resource type="PackedScene" path="res://scenes/dialogue_panel.tscn" id="3_sugp2"]
 [ext_resource type="PackedScene" path="res://scenes/bell.tscn" id="4_bell"]
-[ext_resource type="Texture2D" path="res://assets/bg.png" id="5_bg"]
+[ext_resource type="Texture2D" uid="uid://danke1mmykjjq" path="res://assets/bg.png" id="5_bg"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(12, 16)
@@ -22,27 +22,30 @@ scale = Vector2(0.3125, 0.3125)
 texture = ExtResource("5_bg")
 
 [node name="Bell" parent="." unique_id=789513039 instance=ExtResource("4_bell")]
+position = Vector2(160, 70)
 
 [node name="Pawn" parent="." unique_id=629958277 instance=ExtResource("2_npc")]
 npc_name = "当铺老板"
 body_color = Color(0.42, 0.33, 0.25, 1)
+stations = Array[Vector2]([Vector2(90, 132), Vector2(150, 132), Vector2(230, 132)])
 speed = 20.0
 dwell = 3.0
 
 [node name="Bard" parent="." unique_id=857828711 instance=ExtResource("2_npc")]
 body_color = Color(0.35, 0.29, 0.48, 1)
+stations = Array[Vector2]([Vector2(90, 132), Vector2(150, 132), Vector2(230, 132)])
 speed = 36.0
 dwell = 1.5
 
 [node name="Priest" parent="." unique_id=265407709 instance=ExtResource("2_npc")]
 npc_name = "神官"
 body_color = Color(0.33998263, 0.278438, 0.082677595, 1)
-stations = Array[Vector2]([Vector2(60, 150), Vector2(280, 150)])
+stations = Array[Vector2]([Vector2(60, 132), Vector2(280, 132)])
 speed = 40.0
 dwell = 2.0
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=667611577]
-position = Vector2(40, 150)
+position = Vector2(40, 132)
 collision_mask = 2
 script = ExtResource("1_player")
 
@@ -60,7 +63,7 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 text = "E 交谈"
 horizontal_alignment = 1
 
-[node name="BellNote" type="Label" parent="UI"]
+[node name="BellNote" type="Label" parent="UI" unique_id=954707700]
 visible = false
 offset_top = 96.0
 offset_right = 320.0
@@ -74,6 +77,6 @@ horizontal_alignment = 1
 [node name="Mayor" parent="." unique_id=29940872 instance=ExtResource("2_npc")]
 npc_name = "市长"
 body_color = Color(0.09411765, 0.11372549, 0.13725491, 1)
-stations = Array[Vector2]([Vector2(52, 150), Vector2(150, 150), Vector2(208, 150)])
+stations = Array[Vector2]([Vector2(52, 132), Vector2(150, 132), Vector2(208, 132)])
 speed = 30.0
 dwell = 2.0

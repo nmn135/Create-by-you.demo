@@ -25,7 +25,7 @@ Main (Node2D)                          ← 根节点：整个场景就是这棵�
 ├── Player (CharacterBody2D)           ← 玩家：带脚本的物理体
 │   └── CollisionShape2D               ← 玩家的碰撞盒（12×16）
 └── UI (CanvasLayer)                   ← 界面层：永远盖在最上面
-    └── Prompt (Label)                 ← "E 交谈"提示文字
+	└── Prompt (Label)                 ← "E 交谈"提示文字
 ```
 
 **三个要点：**
@@ -77,9 +77,9 @@ _next_button.pressed.connect(_on_next_pressed)
 UI (CanvasLayer)                 ← 第三课版
 ├── Prompt (Label)               ← "E 交谈"提示
 └── DialoguePanel (PanelContainer)
-    ├── NameLabel                ← NPC 名字
-    ├── TextLabel                ← 台词（自动换行）
-    └── Next (Button)            ← 继续（pressed → 下一句）
+	├── NameLabel                ← NPC 名字
+	├── TextLabel                ← 台词（自动换行）
+	└── Next (Button)            ← 继续（pressed → 下一句）
 ```
 
 ## 第四课 · 输入映射（Input Map）
@@ -134,7 +134,7 @@ move_and_slide()                            # 走，撞到就停
 NPC (CharacterBody2D)               ← 第六课版
 ├── CollisionShape2D                ← 实体碰撞盒（第五课，挡玩家的）
 └── Area2D (感应区，透明不挡路)
-    └── CollisionShape2D            ← CircleShape2D 半径 22 的感应圈
+	└── CollisionShape2D            ← CircleShape2D 半径 22 的感应圈
 ```
 
 NPC 侧（谁进圈、谁出圈，NPC 自己管）：
@@ -182,10 +182,10 @@ options = [
 2. **动态生成按钮** —— 选项是开会时"现造"的：
    ```gdscript
    for opt in _options:
-       var btn := Button.new()
-       btn.text = str(opt.get("label", "……"))
-       btn.pressed.connect(_on_choice_pressed.bind(opt))
-       _choices.add_child(btn)
+	   var btn := Button.new()
+	   btn.text = str(opt.get("label", "……"))
+	   btn.pressed.connect(_on_choice_pressed.bind(opt))
+	   _choices.add_child(btn)
    ```
    `Button.new()` 在代码里造按钮，`add_child` 挂到界面上；`bind(opt)` 把"这是哪个选项"一起传给回调。
 3. **用完清理** —— 每次开会前把旧按钮 `remove_child` + `queue_free` 掉，否则越攒越多。
@@ -287,6 +287,39 @@ texture = ExtResource("5_bg")      # 指向 assets/bg.png
 - 选中场景树里的 `City` → 检查器改 `Scale`，F5 看背景变大/变小
 - 观察钟（`Bell`）和 NPC 站在图上的位置，如果要微调：钟在检查器改 `Position`，NPC 位置改 `scenes/main.tscn` 里对应节点的 `position`
 
+## 第十一课 · 关系系统：你的话开始改变人心
+
+每个 NPC 有 **4 维关系**（信任/恐惧/好感/怀疑，值 0/1/2 = 低/中/高）。你的对话选择会改变它，关系又会反过来解锁新对话——"关系驱动世界"的第一块。
+
+**新概念：Autoload（全局单例）** —— 一个常驻内存的脚本，任何场景/脚本都能直接 `GameState.xxx` 读写，不用传参、不用找节点。注册在项目设置 → Autoload：
+
+```gdscript
+# scripts/game_state.gd
+extends Node
+var relations := {
+	"当铺老板": { "trust": 1, "fear": 1, "like": 1, "suspect": 1 },
+	"说书人":   { "trust": 1, "fear": 1, "like": 1, "suspect": 1 },
+	"神官":     { "trust": 1, "fear": 1, "like": 1, "suspect": 1 },
+	"市长":     { "trust": 1, "fear": 1, "like": 1, "suspect": 1 },
+}
+```
+
+**选项数据升级**（`dialogues.json`，记事本可改）：
+
+```json
+{ "label": "讲讲刻痕", "reply": "……", "effect": { "trust": 1 } }
+{ "label": "我要买市长的秘密", "reply": "……", "need": { "trust": 2 } }
+```
+
+- `effect`：选了之后关系怎么变（±1，锁死在 0~2）
+- `need`：关系不达标，这选项**直接不出现**
+
+**HUD**：对话面板名字下面多一行 `信任中 · 恐惧低 · 好感高 · 怀疑低`，实时刷新。
+
+**试玩路线**：跟当铺老板聊两次，每次都选"收不收钟锤？"（信任+1）→ 信任变"高" → 重开对话，"我要买市长的秘密"出现了。这就是**关系从数值变成游戏内容**。
+
+**踩坑记录**：`Array[String]` 没有 `join()` 方法；要用 `" · ".join(PackedStringArray(parts))`（`join` 是 String 的方法，参数要 PackedStringArray）。
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -324,6 +357,8 @@ texture = ExtResource("5_bg")      # 指向 assets/bg.png
 | `await get_tree().create_timer(秒).timeout` | 挂起等几秒 | 等完继续往下跑 |
 | `Sprite2D` | 显示一张图片的节点 | `texture` 指图片 |
 | `Texture2D` | 图片资源类型 | 拖 PNG 进来就有 |
+| Autoload | 全局单例：常驻内存、处处可读写 | 项目设置 → Autoload 注册 |
+| `clampi(值, 最小, 最大)` | 把数值锁进范围 | 关系 0~2 就用它兜底 |
 
 ## 对应到 Canvas 版 demo
 
@@ -359,4 +394,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 第八课：台词搬进 JSON 文件（`dialogues.json`，启动时读）——完成 ✅
 - [x] 第九课：钟楼响铃（Timer + Tween）——完成 ✅
 - [x] 第十课：正式背景（`bg.png` 导入，替换色块）——完成 ✅（`bg_day2.png` 等第十六课）
-- [ ] 整套移植 web 版（关系系统 / 隔墙有耳 / 流言 / 刻痕 / 结局 / 存档）——见任务清单 #23~#31
+- [x] 第十一课：关系系统（4维关系 + HUD + 选项门槛）——完成 ✅
+- [ ] 整套移植 web 版（世界状态 / 隔墙有耳 / 流言 / 刻痕 / 结局 / 存档）——见任务清单 #24~#31
