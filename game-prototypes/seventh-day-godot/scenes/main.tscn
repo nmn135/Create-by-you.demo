@@ -12,6 +12,7 @@
 [ext_resource type="PackedScene" path="res://scenes/intro.tscn" id="10_intro"]
 [ext_resource type="Script" path="res://scripts/camera.gd" id="11_cam"]
 [ext_resource type="Script" path="res://scripts/day_visual.gd" id="12_day"]
+[ext_resource type="Script" path="res://scripts/bg_fit.gd" id="13_bgfit"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(12, 16)
@@ -28,7 +29,8 @@ script = ExtResource("12_day")
 position = Vector2(160, 90)
 scale = Vector2(0.3125, 0.3125)
 texture = ExtResource("5_bg")
-texture_filter = 2
+texture_filter = 1
+script = ExtResource("13_bgfit")
 
 [node name="Bell" parent="." unique_id=789513039 instance=ExtResource("4_bell")]
 position = Vector2(160, 70)
