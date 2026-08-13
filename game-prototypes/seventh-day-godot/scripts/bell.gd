@@ -32,6 +32,7 @@ func _ring() -> void:
 	if n == 13 and GameState.marks == 0:
 		GameState.add_mark()
 		GameState.notify("第一道刻痕，浮现在城墙上了。")
+		SaveManager.save_game()   # 第十八课：刻痕1 浮现，落盘
 	# Tween：一连串动作，让钟绕着"挂点"摆两下
 	# 格式：tween_property(对象, "属性", 目标值, 耗时秒数)
 	var tween := create_tween()

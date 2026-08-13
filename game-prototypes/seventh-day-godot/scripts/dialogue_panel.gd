@@ -237,6 +237,7 @@ func _show_ending_choices() -> void:
 func _on_ending_chosen(opt: Dictionary) -> void:
 	GameState.ending = str(opt.get("label", "留白"))
 	_apply_effect(opt.get("effect", {}))
+	SaveManager.save_game()   # 第十八课：结局定下了，落盘
 	_set_height(PANEL_H)
 	_hide_choices()
 	_text_label.text = str(opt.get("reply", "……"))
