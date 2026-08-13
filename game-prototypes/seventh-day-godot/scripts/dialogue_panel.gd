@@ -19,7 +19,8 @@ signal closed   # 对话结束信号（以后别的系统可以听这个）
 
 @onready var _name_label: Label = $HBox/VBox/NameLabel
 @onready var _rel_label: Label = $HBox/VBox/RelLabel     # 第十一课：四维关系一行字
-@onready var _text_label: Label = $HBox/VBox/TextLabel
+@onready var _text_scroll: ScrollContainer = $HBox/VBox/Scroll  # 长回复可滚动，告辞按钮不被挤出
+@onready var _text_label: Label = $HBox/VBox/Scroll/TextLabel
 @onready var _choices: Container = $HBox/VBox/Choices   # 还原LLM F2：改 FlowContainer 放横向话题按钮
 @onready var _next_button: Button = $HBox/VBox/Next
 # 第十七课：立绘。场景里还没加 HBox/Portrait 节点时会是 null，代码里都做了空判断
@@ -27,9 +28,9 @@ signal closed   # 对话结束信号（以后别的系统可以听这个）
 # 还原LLM F2：自由对话输入框（场景里没有就不显示，不影响老版本）
 @onready var _input: LineEdit = get_node_or_null("HBox/VBox/Input")
 
-const PANEL_H := 104.0         # 普通对话的面板高度（第十一课加了一行关系字，撑高了点）
-const PANEL_H_CHOICES := 160.0 # 出选项时的高度（要放下按钮们）
-const PANEL_H_ENDING := 220.0  # 还原LLM F5：终局四层剧场的高度（要放下整段作者坦白）
+const PANEL_H := 124.0         # 普通对话的面板高度（TextLabel 上方留白多一点）
+const PANEL_H_CHOICES := 190.0 # 出选项时的高度（要放下按钮们）
+const PANEL_H_ENDING := 230.0  # 还原LLM F5：终局四层剧场的高度（要放下整段作者坦白）
 const PORTRAIT_DIR := "res://assets/portraits/"
 
 # 第十一课：维度的顺序、中文名、数值翻译
@@ -55,6 +56,7 @@ func _ready() -> void:
 	if _input:
 		_input.text_submitted.connect(_on_input_submitted)   # 还原LLM F2：回车发送自由对话
 	_load_ending()             # 第十七课：结局数据
+	_text_scroll.resized.connect(_fit_text_width)  # 长回复：Label 要有显式宽度才在 Scroll 里换行
 
 func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) -> void:
 	_lines = lines if not lines.is_empty() else ["……"]
@@ -392,6 +394,11 @@ func _submit_ending(final_line: String) -> void:
 
 # ---- 还原LLM G3：打字机 ----
 
+# ScrollContainer 里的 Label 只有给了显式宽度才会自动换行
+func _fit_text_width() -> void:
+	if _text_scroll.size.x > 0.0:
+		_text_label.custom_minimum_size.x = _text_scroll.size.x
+
 # 逐字显示一段文字（非阻塞：设置文本后立刻返回，后台继续打）。
 # 按 E 跳过、或开新消息（gen 代次变了）都会立刻作废旧打字。
 func _show_text_typed(text: String) -> void:
@@ -409,6 +416,7 @@ func _typewrite_async(total: int, gen: int) -> void:
 	while shown < total and gen == _type_gen:
 		shown += 1
 		_text_label.visible_characters = shown
+		_text_scroll.scroll_vertical = int(_text_scroll.get_v_scroll_bar().max_value)  # 长回复打字时跟着滚到底
 		await get_tree().create_timer(delay).timeout
 	if gen == _type_gen:
 		_typing = false

@@ -19,6 +19,10 @@ func _ready() -> void:
 	get_tree().paused = true   # 读开场白时整个世界暂停
 	_show_current()
 
+func _process(_delta: float) -> void:
+	# 提示字呼吸闪烁，让玩家一眼看到"按 E"
+	_hint.modulate.a = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.006)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		advance()
