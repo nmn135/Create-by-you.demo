@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/notice.gd" id="7_notice"]
 [ext_resource type="Script" path="res://scripts/marks_label.gd" id="8_marks"]
 [ext_resource type="Script" path="res://scripts/player_avatar.gd" id="9_avatar"]
+[ext_resource type="PackedScene" path="res://scenes/intro.tscn" id="10_intro"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(12, 16)
@@ -124,3 +125,5 @@ body_color = Color(0.09411765, 0.11372549, 0.13725491, 1)
 stations = Array[Vector2]([Vector2(52, 132), Vector2(150, 132), Vector2(208, 132)])
 speed = 30.0
 dwell = 2.0
+
+[node name="Intro" parent="." unique_id=20260817 instance=ExtResource("10_intro")]
