@@ -8,7 +8,7 @@ extends CharacterBody2D
 const DIALOGUES_PATH := "res://dialogues.json"   # 第八课：所有台词都在这
 const SPRITES_DIR := "res://assets/npcs/"        # 还原P1：自己的像素立绘放这（<名字>.png）
 
-const GROUND_Y := 132.0
+const GROUND_Y := 125.0
 @export var npc_name := "说书人"                     # 显示名（也是 JSON 里的钥匙）
 @export var body_color := Color("#5A4A7A")           # 衣服颜色
 @export var stations: Array[Vector2] = [             # 站点列表（巡逻路线）
