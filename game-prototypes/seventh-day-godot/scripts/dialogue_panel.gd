@@ -60,6 +60,7 @@ func advance() -> void:
 	_on_next_pressed()
 
 func _on_next_pressed() -> void:
+	Sound.play_tick()   # 第十九课：程序化合成的翻页声
 	if _choices.visible:
 		return  # 第七课：有选项在等选择时，E 先无效，得先点一个
 	if _showing_reply:

@@ -18,6 +18,7 @@ func _ready() -> void:
 	_timer.start()
 
 func _ring() -> void:
+	Sound.play_bell()   # 第十九课：程序化合成的钟声
 	# 第十二课：先把"这次响声"记进世界状态（NPC 对话能读到、HUD 能显示）
 	GameState.bell_rings += 1
 	# 提示文字跟着报数：第一声是问号，第十三声先打个招呼（真正的戏在第十五课）
