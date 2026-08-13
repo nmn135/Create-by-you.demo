@@ -12,13 +12,15 @@ var relations := {
 	"市长":     { "trust": 1, "fear": 1, "like": 1, "suspect": 1 },
 }
 
-# ---- 第十二课：世界状态 ----
-# 这些是"这座城"的记忆，不属于任何单个 NPC：
-var day := 1          # 第几天（以后刻痕剧情会推进到第二天）
-var bell_rings := 0   # 钟楼响过几次（数到十三是大事——第十五课用）
+# ---- 世界状态 ----
+var day := 1          # 第几天（第十六课起会切到第二天）
+var bell_rings := 0   # 钟楼响过几次（数到十三是大事）
+var flags := {}       # 剧情旗标：名字 → true
+var marks := 0        # 刻痕数 0→1→2→3（第十五~十七课）
+var ending := ""      # 结局："留白" / "破局" / "接笔"（空 = 还没结束）
 
-# 剧情旗标：字符串名字 → true。选过某句话、听过某个秘密，都在这里留痕。
-var flags := {}
+# 屏幕小提示：Notice 标签在 _ready 时注册上来；还没注册时 notify 是空操作
+var notice: Label = null
 
 func has_flag(flag_name: String) -> bool:
 	return flags.get(flag_name, false)
@@ -28,3 +30,26 @@ func set_flag(flag_name: String) -> void:
 
 func unset_flag(flag_name: String) -> void:
 	flags.erase(flag_name)
+
+func add_mark() -> int:
+	marks = clampi(marks + 1, 0, 3)
+	return marks
+
+func next_day() -> void:
+	day += 1
+
+func notify(msg: String) -> void:
+	if notice and is_instance_valid(notice):
+		notice.show_msg(msg)
+
+# 剧情进度检查：每次选项效果结算后调用（dialogue_panel._apply_effect 里接）
+#   刻痕1 已现 + 传过一次闲话 → 刻痕2 上墙，天亮切到第二天
+#   刻痕2 已现 + 听懂说书人那句"最后一笔" → 刻痕3 浮现
+func check_progress() -> void:
+	if marks == 1 and has_flag("gossip_spread"):
+		add_mark()
+		next_day()
+		notify("闲话上了墙。天，亮了——第二天。")
+	if marks == 2 and has_flag("听懂最后一笔"):
+		add_mark()
+		notify("第三道刻痕浮现：末一笔，等你来写。")

@@ -46,6 +46,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		var npc := _nearby_npc()
 		if npc:
+			_eavesdrop(npc)  # 第十三课：说话前先广播"附近有谁在听"
 			_dialogue.open(npc.npc_name, npc.lines, npc.options)
 
 func _update_prompt() -> void:
@@ -56,6 +57,28 @@ func _update_prompt() -> void:
 		_prompt.visible = true
 	else:
 		_prompt.visible = false
+
+# ---- 第十三课：隔墙有耳 ----
+
+const HEAR_RADIUS := 48.0   # 偷听半径：说话者附近 48px 内的人都能听到
+
+# 跟某人说话时，附近的其他 NPC 会偷听：
+#   1. 被偷听的 NPC 记下"听过一耳朵"（他对话里会多出相应选项）
+#   2. 偷听让 NPC 对玩家更警觉（怀疑度 +1，锁在 0~2）
+#   3. 只要有任何人偷听，屏幕弹一句提示
+func _eavesdrop(speaker: Node2D) -> void:
+	var heard_any := false
+	for n in get_tree().get_nodes_in_group("npcs"):
+		if n == speaker:
+			continue
+		if (n.position - speaker.position).length() <= HEAR_RADIUS:
+			GameState.set_flag("heard_" + n.npc_name)
+			var rel: Dictionary = GameState.relations.get(n.npc_name, {})
+			if rel.has("suspect"):
+				rel["suspect"] = clampi(int(rel["suspect"]) + 1, 0, 2)
+			heard_any = true
+	if heard_any:
+		GameState.notify("有人竖起了耳朵。")
 
 # 第六课：感应圈负责"行不行"——先筛出感应到玩家的 NPC；
 # 距离只负责"排顺序"——同时有好几个在圈里时，选最近的那个。

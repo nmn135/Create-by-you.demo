@@ -28,6 +28,10 @@ func _ring() -> void:
 		_note.text = "铛——第十三下了。"
 	else:
 		_note.text = "铛——第 %d 声了。" % n
+	# 第十五课：响满十三下，第一道刻痕浮现（只触发一次）
+	if n == 13 and GameState.marks == 0:
+		GameState.add_mark()
+		GameState.notify("第一道刻痕，浮现在城墙上了。")
 	# Tween：一连串动作，让钟绕着"挂点"摆两下
 	# 格式：tween_property(对象, "属性", 目标值, 耗时秒数)
 	var tween := create_tween()

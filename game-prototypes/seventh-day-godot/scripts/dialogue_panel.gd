@@ -8,17 +8,23 @@ extends PanelContainer
 ## 第十二课新招：
 ##   4. need 里还能写世界状态门槛：{"bell_rings": 2} 钟响过 2 次、{"flag": "名字"} 已点亮旗标
 ##   5. effect里还能写 {"set_flag": "名字"} —— 选这句，就在 GameState 里留下全城记忆
+## 第十三~十七课新招：
+##   6. 对话面板左侧显示 NPC 立绘（assets/portraits/<名字>.png，没有就留空）
+##   7. 结局流程：选项带 "ending": true 时，改成从 "_ending" 数据里出结局三选一
 
 signal closed   # 对话结束信号（以后别的系统可以听这个）
 
-@onready var _name_label: Label = $VBox/NameLabel
-@onready var _rel_label: Label = $VBox/RelLabel     # 第十一课：四维关系一行字
-@onready var _text_label: Label = $VBox/TextLabel
-@onready var _choices: VBoxContainer = $VBox/Choices
-@onready var _next_button: Button = $VBox/Next
+@onready var _name_label: Label = $HBox/VBox/NameLabel
+@onready var _rel_label: Label = $HBox/VBox/RelLabel     # 第十一课：四维关系一行字
+@onready var _text_label: Label = $HBox/VBox/TextLabel
+@onready var _choices: VBoxContainer = $HBox/VBox/Choices
+@onready var _next_button: Button = $HBox/VBox/Next
+# 第十七课：立绘。场景里还没加 HBox/Portrait 节点时会是 null，代码里都做了空判断
+@onready var _portrait: TextureRect = get_node_or_null("HBox/Portrait")
 
 const PANEL_H := 104.0         # 普通对话的面板高度（第十一课加了一行关系字，撑高了点）
 const PANEL_H_CHOICES := 152.0 # 出选项时的高度（要放下按钮们）
+const PORTRAIT_DIR := "res://assets/portraits/"
 
 # 第十一课：维度的顺序、中文名、数值翻译
 const DIM_ORDER := ["trust", "fear", "like", "suspect"]
@@ -30,10 +36,12 @@ var _options: Array[Dictionary] = []
 var _index := 0
 var _npc_name := ""           # 第十一课：现在跟谁说话（改关系要用）
 var _showing_reply := false   # 第七课：正在显示某个选项的回复
+var _ending: Dictionary = {}  # 第十七课：结局三选一（从 dialogues.json 的 "_ending" 读）
 
 func _ready() -> void:
 	# ★ 信号连接：按钮被按下 → 调 _on_next_pressed()
 	_next_button.pressed.connect(_on_next_pressed)
+	_load_ending()             # 第十七课：结局数据
 
 func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) -> void:
 	_lines = lines if not lines.is_empty() else ["……"]
@@ -43,6 +51,7 @@ func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) ->
 	_showing_reply = false
 	_name_label.text = npc_name
 	_refresh_rel()            # 第十一课：打开就显示当前关系
+	_update_portrait(npc_name) # 第十七课：换上这位 NPC 的立绘
 	_show_current()
 	visible = true
 
@@ -54,6 +63,10 @@ func _on_next_pressed() -> void:
 	if _choices.visible:
 		return  # 第七课：有选项在等选择时，E 先无效，得先点一个
 	if _showing_reply:
+		# 第十七课：结局看完，"继续"就是离开游戏
+		if not GameState.ending.is_empty():
+			get_tree().quit()
+			return
 		close()
 		return
 	_index += 1
@@ -92,6 +105,10 @@ func _show_choices() -> void:
 	_choices.visible = true
 
 func _on_choice_pressed(opt: Dictionary) -> void:
+	# 第十七课：这是"听懂这座城"的入口 → 不显示普通回复，直接进结局三选一
+	if opt.get("ending", false):
+		_show_ending_choices()
+		return
 	_apply_effect(opt.get("effect", {}))   # 第十一课：选完先改关系
 	_refresh_rel()                          # 关系变了，刷新那行字
 	_set_height(PANEL_H)
@@ -114,13 +131,15 @@ func _apply_effect(effect: Dictionary) -> void:
 				rel[dim] = clampi(int(rel[dim]) + int(effect[dim]), 0, 2)
 	if effect.has("set_flag"):
 		GameState.set_flag(str(effect["set_flag"]))
+	GameState.check_progress()   # 第十三课：选完这句话，看看剧情该不该推进（刻痕/天亮）
 
 # 这个选项要不要出现？没写 need 就一直出现；写了就要"过门槛"
 # 门槛有两类：
 #   关系（第十一课）：     {"trust": 2}              → 对方信任 >= 2
-#   世界状态（第十二课）：
+#   世界状态（第十二~十七课）：
 #     {"bell_rings": 2}  → 钟楼响过 >= 2 次
 #     {"day": 2}         → 已经是第 2 天
+#     {"marks": 2}       → 已经有 2 道刻痕
 #     {"flag": "名字"}    → 已点亮旗标"名字"
 #     {"no_flag": "名字"}  → 还没点亮旗标"名字"
 func _passes_need(opt: Dictionary) -> bool:
@@ -132,10 +151,12 @@ func _passes_need(opt: Dictionary) -> bool:
 	for dim in ["trust", "fear", "like", "suspect"]:
 		if need.has(dim) and int(rel.get(dim, 0)) < int(need[dim]):
 			return false
-	# —— 世界状态门槛（第十二课）
+	# —— 世界状态门槛（第十二~十七课）
 	if need.has("bell_rings") and GameState.bell_rings < int(need["bell_rings"]):
 		return false
 	if need.has("day") and GameState.day < int(need["day"]):
+		return false
+	if need.has("marks") and GameState.marks < int(need["marks"]):
 		return false
 	if need.has("flag") and not GameState.has_flag(str(need["flag"])):
 		return false
@@ -168,5 +189,57 @@ func _set_height(h: float) -> void:
 func close() -> void:
 	_set_height(PANEL_H)
 	_hide_choices()
+	if _portrait:
+		_portrait.visible = false
 	visible = false
 	closed.emit()
+
+# ---- 第十七课：立绘 + 结局 ----
+
+# 换立绘：assets/portraits/<名字>.png 存在就显示，没有就先留空（以后放进图片即可）
+func _update_portrait(npc_name: String) -> void:
+	if _portrait == null:
+		return
+	var path := PORTRAIT_DIR + npc_name + ".png"
+	if ResourceLoader.exists(path):
+		_portrait.texture = load(path)
+		_portrait.visible = true
+	else:
+		_portrait.texture = null
+		_portrait.visible = false
+
+# 从 dialogues.json 的 "_ending" 键读结局三选一
+func _load_ending() -> void:
+	var file := FileAccess.open("res://dialogues.json", FileAccess.READ)
+	if file == null:
+		return
+	var data: Variant = JSON.parse_string(file.get_as_text())
+	if data is Dictionary and data.has("_ending"):
+		_ending = data["_ending"]
+
+# 结局入口：把三个结局变成按钮
+func _show_ending_choices() -> void:
+	_set_height(PANEL_H_CHOICES)
+	_next_button.visible = false
+	_hide_choices()
+	_text_label.text = str(_ending.get("title", "三道刻痕同时亮起……"))
+	for opt in _ending.get("options", []):
+		var btn := Button.new()
+		btn.text = str(opt.get("label", "……"))
+		btn.pressed.connect(_on_ending_chosen.bind(opt))
+		_choices.add_child(btn)
+	if _choices.get_child_count() == 0:
+		close()
+		return
+	_choices.visible = true
+
+# 玩家挑了一个结局 → 记进 GameState，显示结局文案，"继续"就退出游戏
+func _on_ending_chosen(opt: Dictionary) -> void:
+	GameState.ending = str(opt.get("label", "留白"))
+	_apply_effect(opt.get("effect", {}))
+	_set_height(PANEL_H)
+	_hide_choices()
+	_text_label.text = str(opt.get("reply", "……"))
+	_next_button.text = "—— 故事完 —— [E]"
+	_next_button.visible = true
+	_showing_reply = true
