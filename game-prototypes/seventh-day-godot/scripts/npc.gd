@@ -6,6 +6,7 @@ extends CharacterBody2D
 ##   以后加台词：记事本改 dialogues.json，不用碰 Inspector。
 
 const DIALOGUES_PATH := "res://dialogues.json"   # 第八课：所有台词都在这
+const SPRITES_DIR := "res://assets/npcs/"        # 还原P1：自己的像素立绘放这（<名字>.png）
 
 const GROUND_Y := 132.0
 @export var npc_name := "说书人"                     # 显示名（也是 JSON 里的钥匙）
@@ -25,6 +26,7 @@ var options: Array[Dictionary] = []      # 分支选项 [{label, reply}]
 var _target_index := 0
 var _waiting := 0.0
 var player_near := false   # 第六课：玩家在感应圈里吗？（Area2D 信号在更新它）
+var _sprite_loaded := false   # 还原P1：有像素立绘时不再画色块身体
 
 func _ready() -> void:
 	# 把自己登记进 "npcs" 组，方便玩家/其他系统找到我
@@ -36,6 +38,18 @@ func _ready() -> void:
 	# 第六课：把感应区的"有人进来/出去"两个信号，连到下面的方法
 	$Area2D.body_entered.connect(_on_area_body_entered)
 	$Area2D.body_exited.connect(_on_area_body_exited)
+	# 还原P1：有像素立绘就贴图（和玩家一样居中，脚底压到碰撞盒底）
+	_try_load_sprite()
+
+# 还原P1：assets/npcs/<名字>.png 存在 → 换成像素立绘；没有 → 继续用色块身体
+func _try_load_sprite() -> void:
+	var path := SPRITES_DIR + npc_name + ".png"
+	if ResourceLoader.exists(path):
+		var sprite := Sprite2D.new()
+		sprite.texture = load(path)
+		add_child(sprite)
+		_sprite_loaded = true
+		queue_redraw()
 
 # 第八课：从 JSON 文件读自己的台词
 func _load_dialogue() -> void:
@@ -99,6 +113,8 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 func _draw() -> void:
+	if _sprite_loaded:
+		return  # 还原P1：有像素立绘就不用画色块身体了
 	# 像素小人：换个 body_color 就是另一个人
 	draw_rect(Rect2(-4, -8, 8, 4), Color("#e0b088"))    # 头
 	draw_rect(Rect2(-5, -4, 10, 10), body_color)        # 身体
