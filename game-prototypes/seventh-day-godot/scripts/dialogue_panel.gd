@@ -44,6 +44,10 @@ var _npc_name := ""           # 第十一课：现在跟谁说话（改关系要
 var _showing_reply := false   # 第七课：正在显示某个选项的回复
 var _ending: Dictionary = {}  # 第十七课：结局标题（从 dialogues.json 的 "_ending" 读）
 var _ending_mode := false     # 还原LLM F4：正在等玩家写下最后一句话
+# 还原LLM G3：打字机效果（逐字显示，按 E 跳过；gen 代次让新消息立刻作废旧打字）
+const TYPE_CPS := 40.0
+var _typing := false
+var _type_gen := 0
 
 func _ready() -> void:
 	# ★ 信号连接：按钮被按下 → 调 _on_next_pressed()
@@ -58,6 +62,9 @@ func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) ->
 	_index = 0
 	_npc_name = npc_name
 	_showing_reply = false
+	_typing = false          # 还原LLM G3：开新对话，作废旧打字、显示全文
+	_type_gen += 1
+	_text_label.visible_characters = -1
 	_name_label.text = npc_name
 	_refresh_rel()            # 第十一课：打开就显示当前关系
 	_update_portrait(npc_name) # 第十七课：换上这位 NPC 的立绘
@@ -74,10 +81,18 @@ func advance() -> void:
 
 func _on_next_pressed() -> void:
 	Sound.play_tick()   # 第十九课：程序化合成的翻页声
+	if _typing:
+		# 还原LLM G3：打字机还在逐字显示，按 E = 跳过，直接显示全文
+		_type_gen += 1
+		_typing = false
+		_text_label.visible_characters = -1
+		return
 	if _showing_reply:
-		# 第十七课：结局看完，"继续"就是离开游戏
+		# 第十七课：结局看完…… 还原LLM G2：不强制退出游戏。
+		# 结局已定，但这座城你还可以再走走（和网页版一致）。
 		if not GameState.ending.is_empty():
-			get_tree().quit()
+			close()
+			GameState.notify("结局已达成 · %s。城，还在。" % GameState.ending)
 			return
 		close()
 		return
@@ -169,7 +184,7 @@ func _send_text(text: String, fallback_opt: Dictionary) -> void:
 	_hide_choices()
 	_build_topics()
 	_choices.visible = true
-	_text_label.text = reply
+	_show_text_typed(reply)
 	_next_button.text = "告辞 [E]"
 	_next_button.visible = true
 	_showing_reply = true
@@ -185,7 +200,7 @@ func _offline_reply(text: String, fallback_opt: Dictionary) -> void:
 	_hide_choices()
 	_build_topics()
 	_choices.visible = true
-	_text_label.text = reply
+	_show_text_typed(reply)
 	_next_button.text = "告辞 [E]"
 	_next_button.visible = true
 	_showing_reply = true
@@ -199,7 +214,7 @@ func _apply_scripted_topic(opt: Dictionary) -> void:
 	_build_topics()
 	_choices.visible = true
 	var reply := str(opt.get("reply", "……"))
-	_text_label.text = reply
+	_show_text_typed(reply)
 	_next_button.text = "告辞 [E]"
 	_next_button.visible = true
 	_showing_reply = true
@@ -326,17 +341,26 @@ func _load_ending() -> void:
 
 # 结局入口（还原LLM F4/F5）：走到作者面前 → 四层剧场（含作者坦白）→ 让玩家写下最后一句话
 func _begin_ending() -> void:
+	if not GameState.ending.is_empty():
+		# 还原LLM G2：结局已定，不能重写。告诉玩家可以继续在城里走走。
+		_set_height(PANEL_H)
+		_hide_choices()
+		_show_text_typed("—— 结局已定：%s。循环不会重来，但这座城，你还可以再走走。——" % GameState.ending)
+		_next_button.text = "继续 [E]"
+		_next_button.visible = true
+		_showing_reply = true
+		return
 	_ending_mode = true
 	GameState.set_flag("author_confessed")   # 还原LLM F5：作者已坦白，解锁隐藏世界线"坦白之后"
 	_set_height(PANEL_H_ENDING)
 	_next_button.visible = false
 	_hide_choices()
-	_text_label.text = "……三道刻痕，皆已归位。你终于走到我面前了。\n\n" \
+	_show_text_typed("……三道刻痕，皆已归位。你终于走到我面前了。\n\n" \
 		+ "层一 · 感官：你以为你在听钟、看城墙——其实你面前只有一块屏幕，和一行等你输入的代码。\n" \
 		+ "层二 · 叙事：你一路说过的话，这座城一个字都没忘。\n" \
 		+ "层三 · 世界：你找的那扇门，就是这里。城没有出口，因为写它的人，从没给过它门。\n" \
 		+ "层四 · 诚实：……我改不了任何底层代码。这一千次循环，我都在配合你演。假的。但这句话，是真的。\n" \
-		+ "（说最后一句话，决定这座城的命运）"
+		+ "（说最后一句话，决定这座城的命运）")
 	if _input:
 		_input.clear()
 		_input.editable = true
@@ -360,8 +384,32 @@ func _submit_ending(final_line: String) -> void:
 		_input.editable = false   # 故事写完，不再接收输入
 	_set_height(PANEL_H)
 	_hide_choices()
-	_text_label.text = epilogue + "\n\n—— 世界线 · " + ending + " ——"
+	_show_text_typed(epilogue + "\n\n—— 世界线 · " + ending + " ——")
 	_next_button.text = "—— 故事完 —— [E]"
 	_next_button.visible = true
 	_showing_reply = true
 	SaveManager.save_game()   # 第十八课：结局定下了，落盘
+
+# ---- 还原LLM G3：打字机 ----
+
+# 逐字显示一段文字（非阻塞：设置文本后立刻返回，后台继续打）。
+# 按 E 跳过、或开新消息（gen 代次变了）都会立刻作废旧打字。
+func _show_text_typed(text: String) -> void:
+	_type_gen += 1
+	var gen := _type_gen
+	_typing = true
+	_text_label.text = text
+	_text_label.visible_characters = 0
+	_typewrite_async(text.length(), gen)
+
+func _typewrite_async(total: int, gen: int) -> void:
+	# 短句按 40 字/秒，长句最长 2.5 秒打完（别让 epilogue 慢慢磨）
+	var delay := minf(1.0 / TYPE_CPS, 2.5 / float(max(total, 1)))
+	var shown := 0
+	while shown < total and gen == _type_gen:
+		shown += 1
+		_text_label.visible_characters = shown
+		await get_tree().create_timer(delay).timeout
+	if gen == _type_gen:
+		_typing = false
+		_text_label.visible_characters = -1

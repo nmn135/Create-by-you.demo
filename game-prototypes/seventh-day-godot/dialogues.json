@@ -26,6 +26,7 @@
 			{ "label": "我要买市长的秘密", "reply": "市长的秘密？他藏起了能结束循环的第一道刻痕。这单生意，可记着是我卖给你的。", "need": { "trust": 2 }, "effect": { "fear": 1, "rep": 1 } },
 			{ "label": "刚才的钟声是怎么回事？", "reply": "听见了。它在数数——每响一声，城里就少一个'没听见'的人。数到十三，就该翻篇了。", "need": { "bell_rings": 2 }, "effect": { "fear": 1, "set_flag": "聊过钟声" } },
 			{ "label": "城墙上那行字……", "reply": "那不是人写的。是墨自己爬上去的。作者开始动笔了，生意要难做了。", "need": { "marks": 1 }, "effect": { "fear": 1 } },
+			{ "label": "把「那批话」卖给我", "reply": "……成交。东西会消失，话不会。这批是作者写过又抹掉的字——拿去，你会用得着。", "need": { "marks": 1 }, "effect": { "rep": 1, "set_flag": "fragments" } },
 			{ "label": "（压低声音）你刚才的谈话，我听见了。", "reply": "这城太小，墙会传话。你说的，已经有人知道了。", "need": { "flag": "heard_当铺老板" }, "effect": { "fear": 1, "set_flag": "gossip_spread" } },
 			{ "label": "城里传的闲话，你知道吗？", "reply": "知道了。每个人都在说，却没人说得清是谁先开的头。这就是这城的规矩。", "need": { "flag": "gossip_spread" }, "effect": { "suspect": 1 } },
 			{ "label": "「我听懂了这座城」", "reply": "三道刻痕同时亮起。城在等你写下最后一笔……", "need": { "marks": 3 }, "ending": true },

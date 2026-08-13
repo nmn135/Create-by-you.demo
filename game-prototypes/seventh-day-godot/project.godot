@@ -55,3 +55,7 @@ interact={
 
 textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method="gl_compatibility"
+
+[llm]
+
+base_url="http://127.0.0.1:8890"

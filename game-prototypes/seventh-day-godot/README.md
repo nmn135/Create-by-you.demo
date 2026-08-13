@@ -392,9 +392,15 @@ var relations := {
 - 结局：「我听懂了这座城」（刻痕3）→ 四层剧场（作者坦白）→ 写最后一句话 → 4 世界线（续写/合卷/抹去/坦白之后）→ LLM 现写 epilogue
 - 隐藏结局"坦白之后"：作者坦白后，最后一句话选择"相信"才解锁
 
-**跑起来需要：** 后端 `2d-narrative-demo/server.js` 起着（node server.js，端口 8890）。连不上就自动用本地兜底，游戏永远能玩。
+**跑起来需要：** 后端 `2d-narrative-demo/server.js` 起着（node server.js，端口 8890）。连不上就自动用本地兜底，游戏永远能玩。端口/地址在 `project.godot` 的 `[llm] base_url` 配置（G1），默认 `http://127.0.0.1:8890`。
 
 **存储：** 记忆字段（dialogue_history/facts/npc_heard/secrets）随存档持久化（`save_manager.gd`）。
+
+**还原LLM G1~G4（手感补齐，G 系列）：**
+- **G1 可配置后端地址**：改 `project.godot` → `[llm] base_url` 就行，不用动代码；`talk_client.gd` 的 HTTP 超时是 20 秒（LLM 生成回复可能 8~20 秒，别掐断；服务器没起会立即 connection-refused，不会干等）
+- **G2 结局后不退出**：看完 epilogue 按 E 只是关对话，还能继续在城里走；HUD 标出「终·世界线」。再进结局入口只会提示"结局已定"，不会重写
+- **G3 打字机效果**：LLM 回复 / 结局 epilogue / 四层剧场逐字打出，按 E 跳过；发新消息自动作废旧打字
+- **G4 剧情入口**：刻痕1 后找当铺老板「把『那批话』卖给我」→ 点亮 `fragments` 旗标，LLM 的世界状态里会知道"你收下了那批话"（对应 web 版 buyInk）
 
 ## AI 协作环境（godot-mcp，已配好）
 
@@ -418,4 +424,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 第十一课：关系系统（4维关系 + HUD + 选项门槛）——完成 ✅
 - [x] 还原P1~P7：像素精灵 / 开场 / 相机推近 / 话题快捷栏 / 第二天 / 背景音乐 / 名声解锁 ——完成 ✅
 - [x] 还原LLM F1~F5：自由对话 + 记忆传播 + 无限结局 + meta 频道 ——完成 ✅
+- [x] 还原LLM G1~G4：可配置地址 / 结局后可继续走 / 打字机 / 批话剧情 ——完成 ✅
 - [ ] 整套移植 web 版（世界状态 / 隔墙有耳 / 流言 / 刻痕 / 结局 / 存档）——见任务清单 #24~#31

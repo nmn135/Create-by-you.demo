@@ -8,13 +8,16 @@ extends Node
 ## 任何网络失败都会返回 {"offline": true}，调用方要自己兜底（罐头回复）。
 ## BASE_URL 可以运行时改（测试时指向 mock 服务器）。
 
-var BASE_URL := "http://127.0.0.1:8890"
+# 还原LLM G1：后端地址可配置 —— project.godot 的 [llm] base_url（默认本机 8890）
+# 注意：get_setting 返回 Variant，必须显式写 : String（项目开了"警告当错误"）
+var BASE_URL: String = ProjectSettings.get_setting("llm/base_url", "http://127.0.0.1:8890")
 
 var _http: HTTPRequest
 
 func _ready() -> void:
 	_http = HTTPRequest.new()
-	_http.timeout = 8.0          # 8 秒没响应就报错，别让玩家干等
+	_http.timeout = 20.0        # 20 秒：LLM 生成回复可能 8~20 秒，别掐断正常回复；
+								# 服务器没起时会立即 connection-refused（本地 RST），不会真等满 20 秒
 	add_child(_http)
 
 # 自由对话：body 用 LLMMapper.build_talk_body(...) 生成

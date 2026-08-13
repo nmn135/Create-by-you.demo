@@ -10,3 +10,5 @@ func _process(_delta: float) -> void:
 		text += " · 名声 %d" % GameState.reputation
 	if GameState.saved:
 		text += " · 已存档"
+	if not GameState.ending.is_empty():
+		text += " · 终·%s" % GameState.ending   # 还原LLM G2：结局达成后，HUD 报出世界线
