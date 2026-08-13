@@ -11,6 +11,9 @@ extends PanelContainer
 ## 第十三~十七课新招：
 ##   6. 对话面板左侧显示 NPC 立绘（assets/portraits/<名字>.png，没有就留空）
 ##   7. 结局流程：选项带 "ending": true 时，改成从 "_ending" 数据里出结局三选一
+## 还原P4新招：
+##   8. 话题快捷栏（骑砍式节点分支）：台词说完后，所有"过门槛"的选项变成常驻话题按钮。
+##      点一个看回复，话题栏不收起——可以接着问别的；点"告辞"（或按 E）才结束对话。
 
 signal closed   # 对话结束信号（以后别的系统可以听这个）
 
@@ -62,8 +65,6 @@ func advance() -> void:
 
 func _on_next_pressed() -> void:
 	Sound.play_tick()   # 第十九课：程序化合成的翻页声
-	if _choices.visible:
-		return  # 第七课：有选项在等选择时，E 先无效，得先点一个
 	if _showing_reply:
 		# 第十七课：结局看完，"继续"就是离开游戏
 		if not GameState.ending.is_empty():
@@ -71,11 +72,13 @@ func _on_next_pressed() -> void:
 			return
 		close()
 		return
+	if _choices.visible:
+		return  # 还原P4：话题栏在等选择，E 先无效，得先点一个话题
 	_index += 1
 	if _index < _lines.size():
 		_show_current()
 	elif not _options.is_empty():
-		_show_choices()   # 主台词说完了，还有选项 → 出岔路口
+		_show_topics()   # 主台词说完了 → 出常驻话题快捷栏
 	else:
 		close()
 
@@ -86,35 +89,45 @@ func _show_current() -> void:
 	_next_button.visible = true
 	_hide_choices()
 
-func _show_choices() -> void:
+func _show_topics() -> void:
 	_set_height(PANEL_H_CHOICES)
 	_next_button.visible = false
 	_hide_choices()
-	# 第七课：循环里给每个选项 new 一个按钮，连到同一个处理函数
-	# bind(opt) 把"这是哪个选项"也一起传给回调
-	# 第十一课：只有"过门槛"的选项才会出现（_passes_need）
-	for opt in _options:
-		if not _passes_need(opt):
-			continue   # 关系不够，这选项不出现
-		var btn := Button.new()
-		btn.text = str(opt.get("label", "……"))
-		btn.pressed.connect(_on_choice_pressed.bind(opt))
-		_choices.add_child(btn)
-	# 如果一个能选的都没有，也别卡死——直接当"说完了"
+	_build_topics()
+	# 如果一个话题都没有，也别卡死——直接当"说完了"
 	if _choices.get_child_count() == 0:
 		close()
 		return
 	_choices.visible = true
 
-func _on_choice_pressed(opt: Dictionary) -> void:
+# 还原P4：把"过得去门槛"的选项建成话题按钮（常驻，等玩家点"告辞"才收）
+func _build_topics() -> void:
+	# 第七课：循环里给每个选项 new 一个按钮，连到同一个处理函数
+	# bind(opt) 把"这是哪个选项"也一起传给回调
+	# 第十一课：只有"过门槛"的选项才会出现（_passes_need）
+	for opt in _options:
+		if not _passes_need(opt):
+			continue   # 关系不够，这个话题不出现
+		var btn := Button.new()
+		btn.text = str(opt.get("label", "……"))
+		btn.pressed.connect(_on_topic_pressed.bind(opt))
+		_choices.add_child(btn)
+
+func _on_topic_pressed(opt: Dictionary) -> void:
 	# 第十七课：这是"听懂这座城"的入口 → 不显示普通回复，直接进结局三选一
 	if opt.get("ending", false):
 		_show_ending_choices()
 		return
-	_apply_effect(opt.get("effect", {}))   # 第十一课：选完先改关系
+	# 还原P4：点"告辞"就结束对话，回到探索
+	if str(opt.get("label", "")) == "告辞":
+		close()
+		return
+	_apply_effect(opt.get("effect", {}))   # 第十一课：选完先改关系/世界状态
 	_refresh_rel()                          # 关系变了，刷新那行字
-	_set_height(PANEL_H)
-	_hide_choices()
+	_set_height(PANEL_H_CHOICES)
+	_hide_choices()                        # 清掉上一个话题的按钮
+	_build_topics()                        # 重建话题栏：刚才的话可能解锁了新话题
+	_choices.visible = true                # 还原P4：话题栏常驻，不随回复收起
 	_text_label.text = str(opt.get("reply", "……"))
 	_next_button.text = "告辞 [E]"
 	_next_button.visible = true

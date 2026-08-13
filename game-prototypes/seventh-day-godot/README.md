@@ -184,7 +184,7 @@ options = [
    for opt in _options:
 	   var btn := Button.new()
 	   btn.text = str(opt.get("label", "……"))
-	   btn.pressed.connect(_on_choice_pressed.bind(opt))
+	   btn.pressed.connect(_on_topic_pressed.bind(opt))
 	   _choices.add_child(btn)
    ```
    `Button.new()` 在代码里造按钮，`add_child` 挂到界面上；`bind(opt)` 把"这是哪个选项"一起传给回调。
