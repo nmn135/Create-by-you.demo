@@ -18,6 +18,11 @@ const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一
 func _ready() -> void:
 	# 第六课：加入 "player" 组，NPC 的感应区靠它认出"这是玩家"
 	add_to_group("player")
+	# 第十二课（接画）：把 _draw() 画的占位色块，换成你自己画的 player.png
+	# 16×16 图居中贴在角色身上，脚底刚好压到碰撞盒底部（和 NPC 站同一条地平线）
+	var sprite := Sprite2D.new()
+	sprite.texture = load("res://assets/player.png")
+	add_child(sprite)
 
 func _physics_process(_delta: float) -> void:
 	# 第四课：输入映射。代码不再管具体键，只问"这个动作被按了吗"
@@ -65,10 +70,4 @@ func _nearby_npc() -> Node2D:
 				best = n
 	return best
 
-func _draw() -> void:
-	# 占位像素小人：蓝衣 + 头 + 腰带 + 脚（和 Canvas 版同一套配色）
-	draw_rect(Rect2(-4, -8, 8, 4), Color("#e0b088"))    # 头
-	draw_rect(Rect2(-5, -4, 10, 10), Color("#3b6ea5"))  # 身体
-	draw_rect(Rect2(-5, 4, 10, 1), Color("#8a5a2b"))    # 腰带
-	draw_rect(Rect2(-5, 6, 4, 2), Color("#4a3827"))     # 左脚
-	draw_rect(Rect2(1, 6, 4, 2), Color("#4a3827"))      # 右脚
+# （原 _draw() 占位色块已删 —— 第十二课换成 player.png 精灵图了）
