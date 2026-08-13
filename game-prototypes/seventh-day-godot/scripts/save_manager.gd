@@ -34,6 +34,12 @@ func save_game() -> bool:
 		"marks": GameState.marks,
 		"ending": GameState.ending,
 		"reputation": GameState.reputation,
+		# 还原LLM F3：记忆跨存档保留（话不会消失，和网页版 MAX_FACTS 同思路）
+		"dialogue_history": GameState.dialogue_history,
+		"facts": GameState.facts,
+		"npc_heard": GameState.npc_heard,
+		"secrets_known": GameState.secrets_known,
+		"npc_secrets_known": GameState.npc_secrets_known,
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
@@ -66,5 +72,11 @@ func load_game() -> bool:
 	GameState.marks = clampi(int(data.get("marks", 0)), 0, 3)
 	GameState.ending = str(data.get("ending", ""))
 	GameState.reputation = clampi(int(data.get("reputation", 0)), 0, 10)
+	# 还原LLM F3：读回记忆字段
+	GameState.dialogue_history = data.get("dialogue_history", [])
+	GameState.facts = data.get("facts", [])
+	GameState.npc_heard = data.get("npc_heard", {})
+	GameState.secrets_known = data.get("secrets_known", [])
+	GameState.npc_secrets_known = data.get("npc_secrets_known", {})
 	GameState.saved = true
 	return true

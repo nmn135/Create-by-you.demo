@@ -21,6 +21,14 @@ var ending := ""      # 结局："留白" / "破局" / "接笔"（空 = 还没�
 var saved := false    # 第十八课：有没有存档落盘（HUD 用来显示"已存档"）
 var reputation := 0   # 还原P7：名声 0~10，帮城里的忙会涨，够高才能解锁某些话
 
+# ---- 还原LLM F3：话会传播 ----
+const HEAR_RADIUS := 48.0    # 旁听半径：说话人附近多近的人能"听见"新事实（与 player._eavesdrop 一致）
+const GOSSIP_RADIUS := 40.0  # 闲话半径：两个 NPC 多近算"同处一室"、开始传闲话
+const GOSSIP_DAY1 := 1.8     # 第一天：共处多久才传一句闲话
+const GOSSIP_DAY2 := 1.0     # 第二天：流言传得更快（对应网页版 tickGossip）
+var _co_loc := {}            # "A|B" → 累计共处秒数
+var _gossip_notified := false # 第一次传开时弹提示
+
 # ---- 还原LLM：自由对话/记忆（F1 占位数据结构，F3 填实）----
 var dialogue_history: Array = []          # 最近对话：[{role: "user"|"npc", text}]（发给 LLM 用）
 var facts: Array = []                     # 全城记忆：[{text, known_by: [npc名]}]
@@ -78,7 +86,7 @@ func apply_llm_result(res: Dictionary, speaker_cn: String) -> void:
 		remember_facts(fa, speaker_cn)
 	var sec := str(res.get("secret", ""))
 	if not sec.is_empty():
-		learn_secret(sec)
+		learn_secret(sec, speaker_cn)   # 谁告诉你的，谁也知道
 	var node := str(res.get("node", ""))
 	if not node.is_empty():
 		apply_llm_node(node)
@@ -99,9 +107,17 @@ func apply_llm_node(node: String) -> void:
 	elif node == "walk_clock":
 		notify("市长示意你跟上——往钟楼去。")
 
-# 新事实入记忆：说话人 + 旁听者都会"听过"它
+# 新事实入记忆：说话人 + 旁听者都会"听过"它（还原LLM F3：隔墙有耳，听进 memory）
 func remember_facts(facts_arr: Array, speaker_cn: String) -> void:
 	var listeners: Array = [speaker_cn]
+	var speaker_pos := Vector2.INF
+	for n in get_tree().get_nodes_in_group("npcs"):
+		if n is Node2D and str(n.get("npc_name")) == speaker_cn:
+			speaker_pos = n.position
+	for n in get_tree().get_nodes_in_group("npcs"):
+		if n is Node2D and str(n.get("npc_name")) != speaker_cn:
+			if (n.position - speaker_pos).length() <= HEAR_RADIUS:
+				listeners.append(str(n.get("npc_name")))
 	for ft in facts_arr:
 		var s := str(ft).strip_edges()
 		if s.is_empty():
@@ -115,10 +131,68 @@ func remember_facts(facts_arr: Array, speaker_cn: String) -> void:
 	if facts.size() > 30:
 		facts = facts.slice(-30)
 
-# 玩家得知一个秘密（server 用 id：mayor/pawn/bard）
-func learn_secret(secret_id: String) -> void:
+# ---- 还原LLM F3：闲话传播（移植网页版 tickGossip/doGossip/spreadFact）----
+func _process(delta: float) -> void:
+	_tick_gossip(delta)
+
+func _tick_gossip(delta: float) -> void:
+	var npcs := get_tree().get_nodes_in_group("npcs")
+	if npcs.size() < 2:
+		return
+	var threshold: float = GOSSIP_DAY2 if day >= 2 else GOSSIP_DAY1
+	for i in npcs.size():
+		for j in range(i + 1, npcs.size()):
+			var a: Variant = npcs[i]
+			var b: Variant = npcs[j]
+			if not (a is Node2D) or not (b is Node2D):
+				continue
+			var key := _pair_key(str(a.get("npc_name")), str(b.get("npc_name")))
+			if (a.position - b.position).length() <= GOSSIP_RADIUS:
+				_co_loc[key] = _co_loc.get(key, 0.0) + delta
+				if _co_loc[key] >= threshold:
+					_co_loc[key] = 0.0
+					_spread_gossip(str(a.get("npc_name")), str(b.get("npc_name")))
+			elif _co_loc.has(key):
+				_co_loc[key] = 0.0
+
+func _pair_key(a: String, b: String) -> String:
+	if a < b:
+		return a + "|" + b
+	return b + "|" + a
+
+# 一人知道、一人不知道 → 传过去（每轮只传一条，像闲话一句句说）
+func _spread_gossip(a_cn: String, b_cn: String) -> void:
+	for f in facts:
+		var kb: Array = f.get("known_by", [])
+		if kb.has(a_cn) and not kb.has(b_cn):
+			_spread_fact(f, b_cn)
+			return
+		if kb.has(b_cn) and not kb.has(a_cn):
+			_spread_fact(f, a_cn)
+			return
+
+func _spread_fact(f: Dictionary, npc_cn: String) -> void:
+	var kb: Array = f.get("known_by", [])
+	if not kb.has(npc_cn):
+		kb.append(npc_cn)
+	f["known_by"] = kb
+	var heard: Array = npc_heard.get(npc_cn, [])
+	if not heard.has(str(f.get("text", ""))):
+		heard.append(str(f.get("text", "")))
+		npc_heard[npc_cn] = heard
+	if not _gossip_notified:
+		_gossip_notified = true
+		notify("闲话在城里传开了。")
+
+# 玩家得知一个秘密（server 用 id：mayor/pawn/bard）。speaker_cn = 谁告诉你的（他也知道）
+func learn_secret(secret_id: String, speaker_cn: String = "") -> void:
 	if not secrets_known.has(secret_id):
 		secrets_known.append(secret_id)
+	if not speaker_cn.is_empty():
+		var list: Array = npc_secrets_known.get(speaker_cn, [])
+		if not list.has(secret_id):
+			list.append(secret_id)
+			npc_secrets_known[speaker_cn] = list
 
 # 剧情进度检查：每次选项效果结算后调用（dialogue_panel._apply_effect 里接）
 #   刻痕1 已现 + 传过一次闲话 → 刻痕2 上墙，天亮切到第二天

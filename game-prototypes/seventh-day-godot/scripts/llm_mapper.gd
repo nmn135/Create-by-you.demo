@@ -70,14 +70,17 @@ static func _world_state() -> Dictionary:
 	return ws
 
 # 当前 NPC 记得的事实（≤5 条、每条 ≤40 字，控 token）
+# 还原LLM F3：对齐网页版语义——"你的记忆" = facts 里他知道的；"你听说" = heard 里听过的
 static func _known_facts(npc_cn: String) -> Array:
-	var heard: Array = GameState.npc_heard.get(npc_cn, [])
 	var out: Array = []
-	for f in heard:
+	for f in GameState.facts:
 		if out.size() >= 5:
 			break
-		var s := str(f)
-		if s.length() > 40:
-			s = s.left(40) + "…"
-		out.append(s)
+		if f.get("known_by", []).has(npc_cn):
+			var s := str(f.get("text", "")).strip_edges()
+			if s.is_empty():
+				continue
+			if s.length() > 40:
+				s = s.left(40) + "…"
+			out.append(s)
 	return out

@@ -60,18 +60,13 @@ func _update_prompt() -> void:
 
 # ---- 第十三课：隔墙有耳 ----
 
-const HEAR_RADIUS := 48.0   # 偷听半径：说话者附近 48px 内的人都能听到
-
-# 跟某人说话时，附近的其他 NPC 会偷听：
-#   1. 被偷听的 NPC 记下"听过一耳朵"（他对话里会多出相应选项）
-#   2. 偷听让 NPC 对玩家更警觉（怀疑度 +1，锁在 0~2）
-#   3. 只要有任何人偷听，屏幕弹一句提示
+# 偷听半径：说话者附近 48px 内的人都能听到（还原LLM F3：与 GameState.HEAR_RADIUS 同源）
 func _eavesdrop(speaker: Node2D) -> void:
 	var heard_any := false
 	for n in get_tree().get_nodes_in_group("npcs"):
 		if n == speaker:
 			continue
-		if (n.position - speaker.position).length() <= HEAR_RADIUS:
+		if (n.position - speaker.position).length() <= GameState.HEAR_RADIUS:
 			GameState.set_flag("heard_" + n.npc_name)
 			var rel: Dictionary = GameState.relations.get(n.npc_name, {})
 			if rel.has("suspect"):
