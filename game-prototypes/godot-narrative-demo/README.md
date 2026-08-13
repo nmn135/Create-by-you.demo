@@ -265,6 +265,28 @@ await get_tree().create_timer(2.5).timeout
 - 选中 `Bell` → 展开 `Timer` → 把 `wait_time` 改成 `2.0`，F5 看钟是不是疯狂响（改完记得改回来）
 - 改 `bell.gd` 里 Tween 的数字（比如 `0.15` 改成 `0.05`），感受摆动速度变化
 
+## 第十课 · 正式背景：把美术图铺进游戏
+
+之前的世界是几块色块（深蓝背景 + 灰地面 + 紫钟楼）。这课把 web 版的美术背景 `bg.png` 导入，正式"铺"成了游戏的地盘。
+
+**素材来自** `game-prototypes/2d-narrative-demo/bg.png`（1024×576，16:9），复制到 `assets/bg.png` 后被 Godot 自动导入。
+
+**新概念：`Sprite2D`（精灵）** —— 显示一张图片的节点：
+```
+[node name="City" type="Sprite2D"]
+position = Vector2(160, 90)        # 摆在屏幕中央
+scale = Vector2(0.3125, 0.3125)    # 1024×0.3125=320，576×0.3125=180，正好铺满
+texture = ExtResource("5_bg")      # 指向 assets/bg.png
+```
+
+**为什么是 0.3125**：游戏窗口是 320×180，图片是 1024×576。320÷1024 = 0.3125，比例完全一致（都是 16:9），所以缩放后**不变形**。这就是"按比例缩放"的算法：`目标尺寸 ÷ 原尺寸 = 缩放倍数`。
+
+**顺手清理**：Ground（灰地面）、ClockTower（紫钟楼）两块占位色块删掉了——美术图里自带地面和钟楼，不用再画。Background 深色块保留作兜底。
+
+**课后动手**：
+- 选中场景树里的 `City` → 检查器改 `Scale`，F5 看背景变大/变小
+- 观察钟（`Bell`）和 NPC 站在图上的位置，如果要微调：钟在检查器改 `Position`，NPC 位置改 `scenes/main.tscn` 里对应节点的 `position`
+
 ## 常用单词速查（忘了就回来翻）
 
 | 英文 | 意思 | 在哪 |
@@ -300,6 +322,8 @@ await get_tree().create_timer(2.5).timeout
 | `Tween` | 让属性平滑动起来的动画器 | `create_tween()` |
 | `tween_property(对象, 属性, 目标, 耗时)` | 加一段动画 | `rotation`/`position`/`modulate` 都行 |
 | `await get_tree().create_timer(秒).timeout` | 挂起等几秒 | 等完继续往下跑 |
+| `Sprite2D` | 显示一张图片的节点 | `texture` 指图片 |
+| `Texture2D` | 图片资源类型 | 拖 PNG 进来就有 |
 
 ## 对应到 Canvas 版 demo
 
@@ -334,4 +358,5 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 - [x] 对话分支：选项 + 动态按钮 —— 第七课完成 ✅
 - [x] 第八课：台词搬进 JSON 文件（`dialogues.json`，启动时读）——完成 ✅
 - [x] 第九课：钟楼响铃（Timer + Tween）——完成 ✅
-- [ ] 换正式场景（用 `bg.png`，或先程序化画）
+- [x] 第十课：正式背景（`bg.png` 导入，替换色块）——完成 ✅（`bg_day2.png` 等第十六课）
+- [ ] 整套移植 web 版（关系系统 / 隔墙有耳 / 流言 / 刻痕 / 结局 / 存档）——见任务清单 #23~#31
