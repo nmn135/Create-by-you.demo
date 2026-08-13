@@ -1,0 +1,46 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue_panel.gd" id="1_dp"]
+
+[node name="DialoguePanel" type="PanelContainer"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -140.0
+offset_top = -45.0
+offset_right = 140.0
+offset_bottom = 45.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_dp")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "NPC"
+
+[node name="RelLabel" type="Label" parent="VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+theme_override_colors/font_color = Color(0.8, 0.75, 0.6, 1)
+text = "信任中 · 恐惧中 · 好感中 · 怀疑中"
+
+[node name="TextLabel" type="Label" parent="VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "……"
+autowrap_mode = 2
+
+[node name="Choices" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+visible = false
+
+[node name="Next" type="Button" parent="VBox"]
+layout_mode = 2
+text = "继续 [E]"
