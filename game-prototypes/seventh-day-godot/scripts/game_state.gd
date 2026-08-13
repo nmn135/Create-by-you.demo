@@ -19,6 +19,7 @@ var flags := {}       # 剧情旗标：名字 → true
 var marks := 0        # 刻痕数 0→1→2→3（第十五~十七课）
 var ending := ""      # 结局："留白" / "破局" / "接笔"（空 = 还没结束）
 var saved := false    # 第十八课：有没有存档落盘（HUD 用来显示"已存档"）
+var reputation := 0   # 还原P7：名声 0~10，帮城里的忙会涨，够高才能解锁某些话
 
 # 屏幕小提示：Notice 标签在 _ready 时注册上来；还没注册时 notify 是空操作
 var notice: Label = null

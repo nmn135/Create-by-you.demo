@@ -6,5 +6,7 @@ extends Label
 
 func _process(_delta: float) -> void:
 	text = "第 %d 天 · 钟响 %d 声" % [GameState.day, GameState.bell_rings]
+	if GameState.reputation > 0:
+		text += " · 名声 %d" % GameState.reputation
 	if GameState.saved:
 		text += " · 已存档"

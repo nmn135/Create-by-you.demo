@@ -33,6 +33,7 @@ func save_game() -> bool:
 		"flags": GameState.flags,
 		"marks": GameState.marks,
 		"ending": GameState.ending,
+		"reputation": GameState.reputation,
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
@@ -64,5 +65,6 @@ func load_game() -> bool:
 	GameState.flags = data.get("flags", {})
 	GameState.marks = clampi(int(data.get("marks", 0)), 0, 3)
 	GameState.ending = str(data.get("ending", ""))
+	GameState.reputation = clampi(int(data.get("reputation", 0)), 0, 10)
 	GameState.saved = true
 	return true

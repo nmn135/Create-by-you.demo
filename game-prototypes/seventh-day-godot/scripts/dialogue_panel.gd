@@ -131,6 +131,8 @@ func _apply_effect(effect: Dictionary) -> void:
 		for dim in effect:
 			if rel.has(dim):
 				rel[dim] = clampi(int(rel[dim]) + int(effect[dim]), 0, 2)
+	if effect.has("rep"):
+		GameState.reputation = clampi(GameState.reputation + int(effect["rep"]), 0, 10)  # 还原P7：名声
 	if effect.has("set_flag"):
 		GameState.set_flag(str(effect["set_flag"]))
 	GameState.check_progress()   # 第十三课：选完这句话，看看剧情该不该推进（刻痕/天亮）
@@ -163,6 +165,8 @@ func _passes_need(opt: Dictionary) -> bool:
 	if need.has("flag") and not GameState.has_flag(str(need["flag"])):
 		return false
 	if need.has("no_flag") and GameState.has_flag(str(need["no_flag"])):
+		return false
+	if need.has("rep") and GameState.reputation < int(need["rep"]):   # 还原P7：名声门槛
 		return false
 	return true
 
