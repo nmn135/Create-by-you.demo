@@ -131,6 +131,10 @@ func remember_facts(facts_arr: Array, speaker_cn: String) -> void:
 			if not heard.has(s):
 				heard.append(s)
 				npc_heard[who] = heard
+		# 还原P1.5：旁听者头顶冒话（说话人自己不出声）
+		for who in listeners:
+			if who != speaker_cn:
+				_bubble_on(who, s)
 	if facts.size() > 30:
 		facts = facts.slice(-30)
 
@@ -186,6 +190,14 @@ func _spread_fact(f: Dictionary, npc_cn: String) -> void:
 	if not _gossip_notified:
 		_gossip_notified = true
 		notify("闲话在城里传开了。")
+	_bubble_on(npc_cn, str(f.get("text", "")))   # 还原P1.5：被传话的人头顶冒话
+
+# 还原P1.5：让指定 NPC 头顶冒一句闲话（气泡在 npc.gd 里画）
+func _bubble_on(npc_cn: String, text: String) -> void:
+	for n in get_tree().get_nodes_in_group("npcs"):
+		if n is Node2D and str(n.get("npc_name")) == npc_cn and n.has_method("show_bubble"):
+			n.show_bubble(text)
+			return
 
 # 玩家得知一个秘密（server 用 id：mayor/pawn/bard）。speaker_cn = 谁告诉你的（他也知道）
 func learn_secret(secret_id: String, speaker_cn: String = "") -> void:

@@ -28,6 +28,12 @@ var _waiting := 0.0
 var player_near := false   # 第六课：玩家在感应圈里吗？（Area2D 信号在更新它）
 var _sprite_loaded := false   # 还原P1：有像素立绘时不再画色块身体
 
+# ---- 还原P1.5（气泡闲话）：头顶冒话 ----
+const BUBBLE_MAX_LEN := 18     # 气泡最多显示 18 个字，超了截断加"…"
+var _bubble: PanelContainer
+var _bubble_label: Label
+var _bubble_tween: Tween
+
 func _ready() -> void:
 	# 把自己登记进 "npcs" 组，方便玩家/其他系统找到我
 	add_to_group("npcs")
@@ -40,6 +46,7 @@ func _ready() -> void:
 	$Area2D.body_exited.connect(_on_area_body_exited)
 	# 还原P1：有像素立绘就贴图（和玩家一样居中，脚底压到碰撞盒底）
 	_try_load_sprite()
+	_build_bubble()   # 还原P1.5：头顶气泡（闲话/旁听时冒话）
 
 # 还原P1：assets/npcs/<名字>.png 存在 → 换成像素立绘；没有 → 继续用色块身体
 func _try_load_sprite() -> void:
@@ -121,3 +128,43 @@ func _draw() -> void:
 	draw_rect(Rect2(-5, 4, 10, 1), Color("#8a5a2b"))    # 腰带
 	draw_rect(Rect2(-5, 6, 4, 2), Color("#4a3827"))     # 左脚
 	draw_rect(Rect2(1, 6, 4, 2), Color("#4a3827"))      # 右脚
+
+# ---- 还原P1.5（气泡闲话）：头顶冒话 ----
+
+# 冒一个说话气泡，几秒后淡出。GameState 在"传闲话/隔墙有耳"时调用。
+func show_bubble(text: String, duration: float = 2.5) -> void:
+	if _bubble == null or text.strip_edges().is_empty():
+		return
+	if text.length() > BUBBLE_MAX_LEN:
+		text = text.substr(0, BUBBLE_MAX_LEN) + "…"
+	_bubble_label.text = text
+	_bubble.modulate.a = 1.0
+	_bubble.visible = true
+	_bubble.reset_size()   # 让 PanelContainer 按文字重新算宽高
+	# 顶部居中：气泡左上角 = (负一半宽, 头顶上方)
+	_bubble.position = Vector2(-_bubble.size.x * 0.5, -_bubble.size.y - 40.0)
+	if _bubble_tween and _bubble_tween.is_valid():
+		_bubble_tween.kill()
+	_bubble_tween = create_tween()
+	_bubble_tween.tween_interval(duration)
+	_bubble_tween.tween_property(_bubble, "modulate:a", 0.0, 0.3)
+	_bubble_tween.tween_callback(func() -> void:
+		_bubble.visible = false
+		_bubble.modulate.a = 1.0)
+
+func _build_bubble() -> void:
+	_bubble = PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.06, 0.09, 0.92)
+	sb.set_corner_radius_all(4)
+	sb.set_content_margin_all(4)
+	sb.border_color = Color(0.75, 0.7, 0.55, 0.6)
+	sb.set_border_width_all(1)
+	_bubble.add_theme_stylebox_override("panel", sb)
+	_bubble_label = Label.new()
+	_bubble_label.add_theme_font_size_override("font_size", 8)
+	_bubble_label.add_theme_color_override("font_color", Color(0.95, 0.93, 0.85, 1))
+	_bubble.add_child(_bubble_label)
+	add_child(_bubble)
+	_bubble.visible = false
+	_bubble.z_index = 5   # 压在立绘上面

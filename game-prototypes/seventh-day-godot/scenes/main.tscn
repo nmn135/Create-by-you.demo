@@ -28,6 +28,7 @@ script = ExtResource("12_day")
 position = Vector2(160, 90)
 scale = Vector2(0.3125, 0.3125)
 texture = ExtResource("5_bg")
+texture_filter = 2
 
 [node name="Bell" parent="." unique_id=789513039 instance=ExtResource("4_bell")]
 position = Vector2(160, 70)
