@@ -1,13 +1,13 @@
 extends CharacterBody2D
 ## NPC —— 站点巡游（对应 Canvas 版 npcs[] 的站点系统）
 ##
-## 第六课（感应区 Area2D）新招：
-##   1. 每个 NPC 挂一个透明感应圈（Area2D + CircleShape2D）
-##   2. 玩家走进来 → body_entered 信号 → player_near = true
-##      玩家走出去 → body_exited 信号 → player_near = false
-##   3. 玩家不再"算距离"，直接问：谁感应到我了？（player_near）
+## 第八课（台词搬进 JSON）：
+##   lines / options 不再写在场景里，而是启动时从 dialogues.json 读。
+##   以后加台词：记事本改 dialogues.json，不用碰 Inspector。
 
-@export var npc_name := "说书人"                     # 显示名
+const DIALOGUES_PATH := "res://dialogues.json"   # 第八课：所有台词都在这
+
+@export var npc_name := "说书人"                     # 显示名（也是 JSON 里的钥匙）
 @export var body_color := Color("#5A4A7A")           # 衣服颜色
 @export var stations: Array[Vector2] = [             # 站点列表（巡逻路线）
 	Vector2(90, 150),
@@ -16,8 +16,10 @@ extends CharacterBody2D
 ]
 @export var speed := 32.0   # 像素/秒
 @export var dwell := 2.5    # 到站后停留秒数
-@export var lines: Array[String] = ["……"]   # 台词（第三课：对话面板）
-@export var options: Array[Dictionary] = []   # 第七课：分支选项 [{label, reply}]
+
+# 第八课：不再是 @export —— 启动时从 JSON 读进来
+var lines: Array[String] = ["……"]        # 台词
+var options: Array[Dictionary] = []      # 分支选项 [{label, reply}]
 
 var _target_index := 0
 var _waiting := 0.0
@@ -28,9 +30,39 @@ func _ready() -> void:
 	add_to_group("npcs")
 	# 出生点 = 第一个站点（否则会从 (0,0) 天花板出生再飞下来）
 	position = stations[0]
+	# 第八课：读自己的台词（放在信号连接之前，谁先谁后无所谓）
+	_load_dialogue()
 	# 第六课：把感应区的"有人进来/出去"两个信号，连到下面的方法
 	$Area2D.body_entered.connect(_on_area_body_entered)
 	$Area2D.body_exited.connect(_on_area_body_exited)
+
+# 第八课：从 JSON 文件读自己的台词
+func _load_dialogue() -> void:
+	var file := FileAccess.open(DIALOGUES_PATH, FileAccess.READ)
+	if file == null:
+		push_error("找不到台词文件：" + DIALOGUES_PATH)
+		return
+	var data: Variant = JSON.parse_string(file.get_as_text())
+	if not data is Dictionary:
+		push_error("台词文件格式不对：" + DIALOGUES_PATH)
+		return
+	if data.has(npc_name):
+		var entry: Dictionary = data[npc_name]
+		lines = _to_string_array(entry.get("lines", []))
+		options = _to_dict_array(entry.get("options", []))
+
+# JSON 读出来的是"万能类型" Variant，转成我们用的定型数组
+func _to_string_array(v: Variant) -> Array[String]:
+	var out: Array[String] = []
+	for item in v:
+		out.append(str(item))
+	return out
+
+func _to_dict_array(v: Variant) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for item in v:
+		out.append(item)
+	return out
 
 func _on_area_body_entered(body: Node2D) -> void:
 	# 感应圈只对"玩家"这层开着（Area2D 的 mask=1），
