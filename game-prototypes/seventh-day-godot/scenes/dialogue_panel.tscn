@@ -9,10 +9,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -150.0
-offset_top = -45.0
-offset_right = 150.0
-offset_bottom = 45.0
+offset_left = -300.0
+offset_top = -90.0
+offset_right = 300.0
+offset_bottom = 90.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_dp")
@@ -22,7 +22,7 @@ layout_mode = 2
 
 [node name="Portrait" type="TextureRect" parent="HBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(48, 48)
+custom_minimum_size = Vector2(96, 96)
 expand_mode = 1
 stretch_mode = 5
 texture_filter = 1
@@ -33,12 +33,12 @@ size_flags_horizontal = 3
 
 [node name="NameLabel" type="Label" parent="HBox/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 20
 text = "NPC"
 
 [node name="RelLabel" type="Label" parent="HBox/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 9
+theme_override_font_sizes/font_size = 18
 theme_override_colors/font_color = Color(0.8, 0.75, 0.6, 1)
 text = "信任中 · 恐惧中 · 好感中 · 怀疑中"
 
@@ -49,10 +49,11 @@ horizontal_scroll_mode = 0
 
 [node name="TextLabel" type="Label" parent="HBox/VBox/Scroll"]
 layout_mode = 2
+custom_minimum_size = Vector2(460, 0)
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 24
 text = "……"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Choices" type="FlowContainer" parent="HBox/VBox"]
 layout_mode = 2
@@ -60,8 +61,10 @@ visible = false
 
 [node name="Input" type="LineEdit" parent="HBox/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 32
 placeholder_text = "想说点什么…（回车发送）"
 
 [node name="Next" type="Button" parent="HBox/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 32
 text = "继续 [E]"

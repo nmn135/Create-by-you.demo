@@ -5,8 +5,8 @@ extends Camera2D
 
 const VIEW_W := 320.0
 const VIEW_H := 180.0
-const DEFAULT_ZOOM := Vector2.ONE
-const DIALOGUE_ZOOM := Vector2(1.3, 1.3)
+const DEFAULT_ZOOM := Vector2(2.0, 2.0)
+const DIALOGUE_ZOOM := Vector2(2.6, 2.6)
 
 func _ready() -> void:
 	add_to_group("camera")
@@ -19,7 +19,8 @@ func _process(_delta: float) -> void:
 	var player := get_tree().get_first_node_in_group("player") as Node2D
 	if player:
 		position = player.position
-		var half := Vector2(VIEW_W, VIEW_H) / (2.0 * zoom)
+		# 可见世界大小 = 视口 / zoom；这里用视口尺寸而不是 VIEW_W/H（VIEW 是"世界边界"）
+		var half := get_viewport_rect().size / (2.0 * zoom)
 		position.x = clampf(position.x, half.x, VIEW_W - half.x)
 		position.y = clampf(position.y, half.y, VIEW_H - half.y)
 
