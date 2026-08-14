@@ -14,15 +14,58 @@ const SPEED := 70.0  # 像素/秒 —— 和 Canvas 版 demo 的 AV=70 保持一
 @onready var _prompt: Label = get_node("../UI/Prompt")
 # 对话面板（第三课）：Main/UI/DialoguePanel
 @onready var _dialogue: PanelContainer = get_node("../UI/DialoguePanel")
+# 动画精灵：_ready 里按帧文件是否就位，决定播动画还是退回静态兜底
+var _anim: AnimatedSprite2D
+var _moving := false   # 是否有水平输入（动画状态机切换的依据）
 
 func _ready() -> void:
 	# 第六课：加入 "player" 组，NPC 的感应区靠它认出"这是玩家"
 	add_to_group("player")
-	# 第十二课（接画）：把 _draw() 画的占位色块，换成你自己画的 player.png
-	# 16×16 图居中贴在角色身上，脚底刚好压到碰撞盒底部（和 NPC 站同一条地平线）
-	var sprite := Sprite2D.new()
-	sprite.texture = load("res://assets/player.png")
-	add_child(sprite)
+	# 玩家动画（AnimatedSprite2D）：待机/跑步帧序列从 assets/player_frames/ 读，
+	# 每帧 32×32、脚底贴画布底边。AnimatedSprite2D 和旧 Sprite2D 一样居中，
+	# 原点 +16 就是脚底，对齐规则不变。
+	_anim = AnimatedSprite2D.new()
+	var frames := SpriteFrames.new()
+	# Godot 新建 SpriteFrames 自带一个空的 "default" 动画（编辑器占位用），
+	# 先摘掉，否则下面 is_empty() 判断永远为假
+	if frames.has_animation("default") and frames.get_frame_count("default") == 0:
+		frames.remove_animation("default")
+	# 帧表布局（assets/player_frames/）：idle 0-9 循环；
+	# run 0-1 是启动两帧（只播一次），run 2-19 是跑步循环
+	_add_anim(frames, "idle", "idle", 8.0, true, 0, 10)
+	_add_anim(frames, "run_start", "run", 10.0, false, 0, 2)
+	_add_anim(frames, "run", "run", 10.0, true, 2, 18)
+	if frames.get_animation_names().is_empty():
+		# 兜底：动画帧还没放进 assets/player_frames/ 时，退回单张静态图，游戏照常能玩
+		var sprite := Sprite2D.new()
+		sprite.texture = load("res://assets/player.png")
+		add_child(sprite)
+		return
+	_anim.sprite_frames = frames
+	# 启动段播完自动接上跑步循环，见 _on_anim_finished
+	_anim.animation_finished.connect(_on_anim_finished)
+	_anim.play("idle" if frames.has_animation("idle") else frames.get_animation_names()[0])
+	add_child(_anim)
+
+## 注册一段动画：读 assets/player_frames/<前缀>_<i>.png，i 从 from_idx 起最多 count 帧；
+## 文件缺失即停（缺帧不崩，最多动画短一点）。loop=false 用于"只播一次"的启动段
+func _add_anim(frames: SpriteFrames, anim_name: String, file_prefix: String, speed: float,
+		loop: bool = true, from_idx: int = 0, count: int = 32) -> void:
+	for i in range(from_idx, from_idx + count):
+		var path := "res://assets/player_frames/%s_%d.png" % [file_prefix, i]
+		if not ResourceLoader.exists(path):
+			break
+		if not frames.has_animation(anim_name):
+			frames.add_animation(anim_name)
+			frames.set_animation_loop(anim_name, loop)
+			frames.set_animation_speed(anim_name, speed)
+		frames.add_frame(anim_name, load(path))
+
+## 启动段（run_start）只播一次：播完时如果玩家还在跑，接上跑步循环
+func _on_anim_finished() -> void:
+	if _anim != null and _anim.animation == "run_start" and _moving \
+			and _anim.sprite_frames.has_animation("run"):
+		_anim.play("run")
 
 func _physics_process(_delta: float) -> void:
 	# 第四课：输入映射。代码不再管具体键，只问"这个动作被按了吗"
@@ -34,6 +77,15 @@ func _physics_process(_delta: float) -> void:
 		dir += 1.0
 	velocity.x = dir * SPEED
 	move_and_slide()
+	# 动画切换：有水平输入 → 播启动段（播完自动接跑步循环）并朝移动方向翻转；停下 → 待机
+	_moving = dir != 0.0
+	if _anim != null:
+		if _moving:
+			_anim.flip_h = dir < 0.0
+			if _anim.animation != "run" and _anim.animation != "run_start":
+				_anim.play("run_start" if _anim.sprite_frames.has_animation("run_start") else "run")
+		elif _anim.animation != "idle" and _anim.sprite_frames.has_animation("idle"):
+			_anim.play("idle")
 
 func _process(_delta: float) -> void:
 	_update_prompt()
