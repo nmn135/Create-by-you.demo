@@ -11,6 +11,7 @@ extends Node
 ##   · 闲话上墙、天亮切到第二天（刻痕2）
 ##   · 说书人点破"最后一笔"（刻痕3）
 ##   · 玩家选出结局
+##   · 作者坦白（进入四层剧场，还原LLM F4）
 ## 启动时如果有存档，自动读回，屏幕提示"已读档"。
 
 const SAVE_PATH := "user://save.json"
@@ -78,5 +79,7 @@ func load_game() -> bool:
 	GameState.npc_heard = data.get("npc_heard", {})
 	GameState.secrets_known = data.get("secrets_known", [])
 	GameState.npc_secrets_known = data.get("npc_secrets_known", {})
+	# 旧档清理：清掉 "<null>" 字符串污染；老历史没有 npc 标记 → 从舞台提示反推说话人
+	GameState.sanitize_loaded_save()
 	GameState.saved = true
 	return true

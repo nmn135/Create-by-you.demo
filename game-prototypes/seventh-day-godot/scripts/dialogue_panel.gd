@@ -354,17 +354,42 @@ func _begin_ending() -> void:
 		return
 	_ending_mode = true
 	GameState.set_flag("author_confessed")   # 还原LLM F5：作者已坦白，解锁隐藏世界线"坦白之后"
+	SaveManager.save_game()                  # 与网页版一致：坦白后立刻落盘，作者之墨不会白费
 	_set_height(PANEL_H_ENDING)
 	_next_button.visible = false
 	_hide_choices()
-	_show_text_typed("……三道刻痕，皆已归位。你终于走到我面前了。\n\n" \
+	# 对齐网页版 finaleFirstLine：层二引用玩家最近说过的 3 句话（最长 18 字截断）
+	var echoes: Array[String] = []
+	for h in GameState.dialogue_history:
+		if str(h.get("role", "")) != "user":
+			continue
+		var s := str(h.get("text", "")).strip_edges()
+		if s.is_empty():
+			continue
+		if s.length() > 18:
+			s = s.left(18) + "…"
+		echoes.append("「" + s + "」")
+	while echoes.size() > 3:
+		echoes.pop_front()
+	var echo_line: String = " ".join(PackedStringArray(echoes))
+	if echo_line.is_empty():
+		echo_line = "「……」你什么都没留下，但城记得你走进来的那一步。"
+	var title_line := ""
+	if not _ending.is_empty():
+		title_line = str(_ending.get("title", "")).strip_edges()
+	var theater := "……三道刻痕，皆已归位。你终于走到我面前了。\n\n" \
 		+ "层一 · 感官：你以为你在听钟、看城墙——其实你面前只有一块屏幕，和一行等你输入的代码。\n" \
-		+ "层二 · 叙事：你一路说过的话，这座城一个字都没忘。\n" \
+		+ "层二 · 叙事：你一路说过——" + echo_line + "。这座城，一个字都没忘。\n" \
 		+ "层三 · 世界：你找的那扇门，就是这里。城没有出口，因为写它的人，从没给过它门。\n" \
 		+ "层四 · 诚实：……我改不了任何底层代码。这一千次循环，我都在配合你演。假的。但这句话，是真的。\n" \
-		+ "（说最后一句话，决定这座城的命运）")
+		+ "（说最后一句话，决定这座城的命运）"
+	if title_line.is_empty():
+		_show_text_typed(theater)
+	else:
+		_show_text_typed(title_line + "\n\n" + theater)
 	if _input:
 		_input.clear()
+		_input.placeholder_text = "（说最后一句话，决定这座城的命运）"
 		_input.editable = true
 		_input.grab_focus()
 

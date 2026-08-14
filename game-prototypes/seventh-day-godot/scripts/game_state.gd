@@ -17,7 +17,7 @@ var day := 1          # 第几天（第十六课起会切到第二天）
 var bell_rings := 0   # 钟楼响过几次（数到十三是大事）
 var flags := {}       # 剧情旗标：名字 → true
 var marks := 0        # 刻痕数 0→1→2→3（第十五~十七课）
-var ending := ""      # 结局："留白" / "破局" / "接笔"（空 = 还没结束）
+var ending := ""      # 结局："续写" / "合卷" / "抹去" / "坦白之后"（空 = 还没结束）
 var saved := false    # 第十八课：有没有存档落盘（HUD 用来显示"已存档"）
 var reputation := 0   # 还原P7：名声 0~10，帮城里的忙会涨，够高才能解锁某些话
 
@@ -68,6 +68,52 @@ func log_dialogue(role: String, text: String, npc: String = "") -> void:
 	if dialogue_history.size() > 20:
 		dialogue_history = dialogue_history.slice(-20)
 
+# ---- 存档清理 + 旧档迁移（save_manager 加载完存档后调用） ----
+# 1. 清掉老版本误存的 "<null>" 字符串（当时把 LLM 返回的 null 直接 str() 了）
+# 2. 老存档的 dialogue_history 没有 npc 标记，按人过滤后会全部失效（NPC 集体失忆）。
+#    补救：NPC 台词大多带舞台提示（"（市长压低声音）…"），从开头反推说话人；
+#    玩家台词归给"下一条 NPC 回复"的说话人（同一场对话）。
+func sanitize_loaded_save() -> void:
+	for key in npc_secrets_known.keys():
+		var clean: Array = []
+		for s in npc_secrets_known[key]:
+			if s == null or str(s) in ["<null>", ""]:
+				continue
+			if not clean.has(s):
+				clean.append(s)
+		npc_secrets_known[key] = clean
+	var player_clean: Array = []
+	for s in secrets_known:
+		if s == null or str(s) in ["<null>", ""]:
+			continue
+		if not player_clean.has(s):
+			player_clean.append(s)
+	secrets_known = player_clean
+	_infer_history_speakers()
+
+# 从台词开头的舞台提示反推说话人（"（市长…）" / "市长…"）
+func _infer_speaker(text: String) -> String:
+	for cn in ["市长", "当铺老板", "说书人", "神官"]:
+		if text.begins_with("（" + cn) or text.begins_with("(" + cn) or text.begins_with(cn):
+			return cn
+	return ""
+
+# 从后往前扫历史：NPC 台词反推自己是谁；玩家台词归给紧随其后的 NPC
+func _infer_history_speakers() -> void:
+	var prev := ""
+	for i in range(dialogue_history.size() - 1, -1, -1):
+		var h: Dictionary = dialogue_history[i]
+		if not str(h.get("npc", "")).is_empty():
+			prev = str(h.get("npc", ""))
+			continue
+		var inferred := ""
+		if str(h.get("role", "")) == "npc":
+			inferred = _infer_speaker(str(h.get("text", "")))
+			prev = inferred if not inferred.is_empty() else prev
+		var tag := inferred if not inferred.is_empty() else prev
+		if not tag.is_empty():
+			h["npc"] = tag
+
 # ---- 还原LLM：应用 server.js 返回的自由对话结果 ----
 # res = {reply, facts[], repDelta, deltas{id:{dim:±1}}, node, secret}
 # speaker_cn = 当前对话的 NPC 中文名（新事实讲给谁听）
@@ -87,12 +133,14 @@ func apply_llm_result(res: Dictionary, speaker_cn: String) -> void:
 	var fa: Array = res.get("facts", [])
 	if not fa.is_empty():
 		remember_facts(fa, speaker_cn)
-	var sec := str(res.get("secret", ""))
-	if not sec.is_empty():
-		learn_secret(sec, speaker_cn)   # 谁告诉你的，谁也知道
-	var node := str(res.get("node", ""))
-	if not node.is_empty():
-		apply_llm_node(node)
+	# 防御：LLM 的 JSON 里 secret/node 常是 null。先判空再转字符串，
+	# 否则 str(null) 会变成 "<null>" 字样被当成真秘密存进存档。
+	var sec: Variant = res.get("secret", "")
+	if sec != null and not str(sec).strip_edges().is_empty():
+		learn_secret(str(sec), speaker_cn)   # 谁告诉你的，谁也知道
+	var node: Variant = res.get("node", "")
+	if node != null and not str(node).strip_edges().is_empty():
+		apply_llm_node(str(node))
 
 # LLM 给的"节点" → 剧情推进（接在现有脚本化触点上）
 func apply_llm_node(node: String) -> void:
@@ -125,6 +173,8 @@ func remember_facts(facts_arr: Array, speaker_cn: String) -> void:
 			if (n.position - speaker_pos).length() <= HEAR_RADIUS:
 				listeners.append(str(n.get("npc_name")))
 	for ft in facts_arr:
+		if ft == null:
+			continue   # LLM 偶尔给 facts 里塞 null，跳过（同 secret 的 "<null>" 防御）
 		var s := str(ft).strip_edges()
 		if s.is_empty():
 			continue
