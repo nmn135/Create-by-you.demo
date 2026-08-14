@@ -49,6 +49,7 @@ var _ending_mode := false     # 还原LLM F4：正在等玩家写下最后一句
 const TYPE_CPS := 40.0
 var _typing := false
 var _type_gen := 0
+var _busy := false            # 等 LLM 回复/提交结局期间为真：E 键一律无效，防竞态把面板半路关掉
 
 func _ready() -> void:
 	# ★ 信号连接：按钮被按下 → 调 _on_next_pressed()
@@ -64,6 +65,7 @@ func open(npc_name: String, lines: Array[String], options: Array[Dictionary]) ->
 	_index = 0
 	_npc_name = npc_name
 	_showing_reply = false
+	_ending_mode = false      # 防泄漏：剧场模式绝不能漏进普通对话（否则闲聊会被当成"最后一笔"）
 	_typing = false          # 还原LLM G3：开新对话，作废旧打字、显示全文
 	_type_gen += 1
 	_text_label.visible_characters = -1
@@ -82,13 +84,19 @@ func advance() -> void:
 	_on_next_pressed()
 
 func _on_next_pressed() -> void:
-	Sound.play_tick()   # 第十九课：程序化合成的翻页声
 	if _typing:
+		Sound.play_tick()   # 第十九课：程序化合成的翻页声
 		# 还原LLM G3：打字机还在逐字显示，按 E = 跳过，直接显示全文
 		_type_gen += 1
 		_typing = false
 		_text_label.visible_characters = -1
 		return
+	# 等 LLM 回复 / 结局剧场中：E 键无效。
+	# 否则 await 期间按 E 会命中下面 _showing_reply→close()，面板半路被关、
+	# 回复打进去没人看；剧场里按 E 则会把刻痕剧场顶成话题栏。
+	if _busy or _ending_mode:
+		return
+	Sound.play_tick()   # 第十九课：程序化合成的翻页声
 	if _showing_reply:
 		# 第十七课：结局看完…… 还原LLM G2：不强制退出游戏。
 		# 结局已定，但这座城你还可以再走走（和网页版一致）。
@@ -172,8 +180,10 @@ func _send_text(text: String, fallback_opt: Dictionary) -> void:
 		_name_label.text = "？？？"
 	_text_label.text = "（%s正在斟酌…）" % ("？？？" if meta_mode else _npc_name)
 	_set_busy(true)
+	_busy = true    # 竞态闸门：await 期间 E 键无效，面板不会被半路关掉
 	var body := LLMMapper.build_talk_body(_npc_name, text, meta_mode)
 	var res: Dictionary = await TalkClient.talk(body)
+	_busy = false
 	_set_busy(false)
 	if res.get("offline", false) or not res.has("reply"):
 		_offline_reply(text, fallback_opt)
@@ -307,6 +317,7 @@ func close() -> void:
 	_camera_zoom(false)         # 还原P3：关对话镜头拉回
 	_set_height(PANEL_H)
 	_hide_choices()
+	_ending_mode = false         # 防泄漏：退出剧场时把结局模式关掉（open() 里也双保险）
 	if _portrait:
 		_portrait.visible = false
 	visible = false
@@ -401,8 +412,10 @@ func _submit_ending(final_line: String) -> void:
 	GameState.ending = ending
 	_text_label.text = "（城在倾听你的最后一笔…）"
 	_set_busy(true)
+	_busy = true    # 竞态闸门：提交结局的 await 期间 E 键无效
 	var body := LLMMapper.build_endgame_body(final_line, ending)
 	var res: Dictionary = await TalkClient.endgame(body)
+	_busy = false
 	_set_busy(false)
 	var epilogue := Endgame.default_epilogue(ending)
 	if not res.get("offline", false) and str(res.get("epilogue", "")).strip_edges() != "":

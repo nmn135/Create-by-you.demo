@@ -54,6 +54,21 @@ func _ready() -> void:
 	var save_text := FileAccess.get_file_as_string("user://save.json")
 	_check("存档写入成功", not save_text.is_empty())
 	_check("存档含 author_confessed 旗标", save_text.contains("author_confessed"))
+	# —— 竞态闸门回归：busy / ending_mode 时 E 键必须无效 ——
+	_panel.advance()   # 先跳过打字机（这声 E 是合法的）
+	var vis_before: bool = _panel.visible
+	var txt_before: String = text_label.text
+	_panel._busy = true
+	_panel.advance()
+	_check("busy 时 E 不关面板不改文本", _panel.visible == vis_before and text_label.text == txt_before)
+	_panel._busy = false
+	_panel.advance()   # ending_mode 还开着：E 也不能把剧场顶成话题栏
+	_check("ending_mode 时 E 不推进剧场", text_label.text == txt_before)
+	_panel.close()
+	_check("close() 后 ending_mode 复位", _panel._ending_mode == false)
+	_panel._ending_mode = true
+	_panel.open("市长", lines, opts)
+	_check("open() 后 ending_mode 复位", _panel._ending_mode == false)
 	_restore_save()
 	print("[END] DONE failed=%d" % _failed)
 	get_tree().quit()

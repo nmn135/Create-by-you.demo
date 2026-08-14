@@ -9,7 +9,8 @@ extends Node
 ## BASE_URL 可以运行时改（测试时指向 mock 服务器）。
 
 # 还原LLM G1：后端地址可配置 —— project.godot 的 [llm] base_url（默认本机 8890）
-# 注意：get_setting 返回 Variant，必须显式写 : String（项目开了"警告当错误"）
+# 注意：get_setting 返回 Variant，显式标注 : String 保持类型纪律
+# （项目当前未在 project.godot 开启"警告当错误"，但代码按该标准写）
 var BASE_URL: String = ProjectSettings.get_setting("llm/base_url", "http://127.0.0.1:8890")
 
 var _http: HTTPRequest
