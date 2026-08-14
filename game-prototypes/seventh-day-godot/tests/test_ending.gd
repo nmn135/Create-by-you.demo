@@ -25,6 +25,15 @@ func _ready() -> void:
 		print("[END] FAIL 找不到 DialoguePanel")
 		get_tree().quit()
 		return
+	# —— 剧情推进链回归：刻痕1 + 闲话传开 → 第二天 + 刻痕2；听懂最后一笔 → 刻痕3 ——
+	GameState.marks = 1
+	GameState.set_flag("gossip_spread")
+	GameState.check_progress()
+	_check("闲话上墙 → 第二天 + 刻痕2", GameState.day == 2 and GameState.marks == 2)
+	GameState.set_flag("听懂最后一笔")
+	GameState.check_progress()
+	_check("听懂最后一笔 → 刻痕3", GameState.marks == 3)
+	GameState.day = 1
 	# 模拟玩家一路说过的话（不同 NPC 混着，层二只取玩家台词）
 	GameState.dialogue_history = [
 		{ "role": "user", "text": "神为什么不回应？", "npc": "神官" },
