@@ -78,6 +78,29 @@ func _ready() -> void:
 	_panel._ending_mode = true
 	_panel.open("市长", lines, opts)
 	_check("open() 后 ending_mode 复位", _panel._ending_mode == false)
+	# —— 黄金路径：钟第13下 → 刻痕1 → 闲话上墙 → 第二天+刻痕2 → 听懂 → 刻痕3 → 话题栏真的出现结局入口 ——
+	GameState.marks = 0
+	GameState.bell_rings = 12
+	GameState.unset_flag("gossip_spread")    # 清场：前面推进块点亮的旗标不残留，
+	GameState.unset_flag("听懂最后一笔")      # 否则 check_progress 会一穿二（1→3）
+	var bell_timer: Timer = main.get_node("Bell/Timer")
+	bell_timer.stop()   # 停掉随机响铃，别干扰"第13下"的确定性
+	main.get_node("Bell").call("_ring")
+	_check("黄金路径：钟第13下 → 刻痕1", GameState.marks == 1)
+	GameState.set_flag("gossip_spread")
+	GameState.check_progress()
+	_check("黄金路径：闲话上墙 → 第二天 + 刻痕2", GameState.day == 2 and GameState.marks == 2)
+	GameState.set_flag("听懂最后一笔")
+	GameState.check_progress()
+	_check("黄金路径：听懂最后一笔 → 刻痕3", GameState.marks == 3)
+	var bard: Node = main.get_node("Bard")
+	_panel.open("说书人", bard.get("lines"), bard.get("options"))
+	_panel._show_topics()   # 走真实 _build_topics + _passes_need 过滤
+	var found_ending := false
+	for c in _panel._choices.get_children():
+		if c is Button and str(c.text) == "「我听懂了这座城」":
+			found_ending = true
+	_check("黄金路径：结局入口话题出现", found_ending)
 	_restore_save()
 	print("[END] DONE failed=%d" % _failed)
 	get_tree().quit()
