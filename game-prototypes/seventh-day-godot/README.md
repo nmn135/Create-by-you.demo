@@ -443,10 +443,20 @@ Claude Code / Claudian 通过 MCP 直接操作 Godot：
 
 LLM 的 JSON 里 `secret`/`node`/`facts` 常是 `null`，老代码直接 `str(null)` → 变成 `"<null>"` 字符串，当成真秘密存进存档。修复：写入时先判空；读档时 `sanitize_loaded_save()` 清理残留，并给老存档的历史**反推说话人**（NPC 台词大多带舞台提示"（市长压低声音）…"），让旧进度不因新分桶而"集体失忆"。
 
-**回归测试**（`tests/`，39 项）：`test_migrate`（迁移/清理）、`test_ending`（结局剧场全流程 + 竞态闸门，自动备份存档）、`test_e2e`（真实 server 端到端）。跑法见 `tests/README.md`。
+**回归测试**（`tests/`，45 项）：`test_migrate`（迁移/清理）、`test_ending`（结局剧场全流程 + 剧情推进链 + 黄金路径 + 竞态闸门，自动备份存档）、`test_e2e`（真实 server 端到端）。跑法见 `tests/README.md`。
 
 **3. 对话面板的 E 键竞态（会话审计发现）**
 
 - 等 LLM 回复时按 E 会把面板半路关掉：回复打进去没人看，紧接再发一句还会因为 HTTP 请求在途被误判成"离线"。
 - 更糟的是结局模式：剧场里按 E 能把四层剧场顶成话题栏，且 `_ending_mode` 从不复位——之后任何一句闲聊都会被当成"最后一笔"，随机定一条世界线写进存档。
 - 修复：`_busy` 闸门（await 期间 E 无效）+ `_ending_mode` 在 `open()`/`close()` 双保险复位 + 结局剧场里 E 只许"跳打字机"、不许退出。`test_ending` 新增 4 项闸门回归守这条线。
+
+## 旗标盘点（2026-08：给以后写对话的你）
+
+游戏里的剧情旗标（`flags`）分三类：
+
+- **闭环**（有人点亮、有人消费）：`gossip_spread`（闲话选项 → 切第二天）、`聊过钟声`/`听过十三`（选项链）、`heard_市长/当铺老板/说书人/神官`（旁听触发 → 话题门槛）、`fragments`（当铺批话 → 发给 server 的世界状态）、`听懂最后一笔`（选项/LLM 节点 → 刻痕3）、`author_confessed`（剧场/LLM 节点 → 隐藏结局"坦白之后"）。
+- **孤儿**（只点亮、没人读，留着无害只是存档里多个 true）：`神官认证十三`、`听过名声`、`结局_接笔/破局/留白`（旧版三选一结局的遗留；现在结局走自由输入+分类，`_ending.options` 已不展示）。
+- **残留**：`door_visible` 永远 false（网页版有门，Godot 版刻痕2 简化为"文字上墙+天亮"，没做门实体）。保留在协议里是为了和 server.js 字段对齐。
+
+写新话题时：`need` 里能用的键 = `trust/fear/like/suspect/bell_rings/day/marks/flag/no_flag/rep`；`effect` 里能用的键 = `trust/fear/like/suspect/rep/set_flag`。
